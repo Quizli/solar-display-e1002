@@ -1,36 +1,28 @@
 from pathlib import Path
-import shutil
-import sys
+import json
 
 
 def main() -> None:
     renderer_dir = Path(__file__).resolve().parent.parent
+
+    template_path = renderer_dir / "template" / "dashboard_template.svg"
+    data_path = renderer_dir / "data" / "sample_data.json"
     output_dir = renderer_dir / "output"
+    output_path = output_dir / "dashboard.svg"
 
-    # Find the frozen reference SVG in renderer/
-    svg_files = [
-        path
-        for path in renderer_dir.glob("*.svg")
-        if path.name != "dashboard.svg"
-    ]
+    template = template_path.read_text(encoding="utf-8")
+    data = json.loads(data_path.read_text(encoding="utf-8"))
 
-    if len(svg_files) != 1:
-        print(
-            f"Error: Expected exactly one reference SVG in {renderer_dir}, "
-            f"found {len(svg_files)}.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    rendered = template
+    for key, value in data.items():
+        rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
 
-    source_svg = svg_files[0]
     output_dir.mkdir(exist_ok=True)
+    output_path.write_text(rendered, encoding="utf-8")
 
-    output_svg = output_dir / "dashboard.svg"
-
-    shutil.copyfile(source_svg, output_svg)
-
-    print(f"Reference: {source_svg.name}")
-    print(f"Generated: {output_svg}")
+    print(f"Template:  {template_path}")
+    print(f"Data:      {data_path}")
+    print(f"Generated: {output_path}")
 
 
 if __name__ == "__main__":
