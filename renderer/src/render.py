@@ -72,6 +72,21 @@ def main() -> None:
     grid_power = float(data["grid_power_kw"])
 
     # Display semantics:
+    # House / heat rows: if near zero, show 0.0 and no arrow
+    if abs(house_power) < 0.05:
+        house_display = 0.0
+        house_arrow_svg = ""
+    else:
+        house_display = abs(house_power)
+        house_arrow_svg = down_arrow(303, RED)
+
+    if abs(heat_power) < 0.05:
+        heat_display = 0.0
+        heat_arrow_svg = ""
+    else:
+        heat_display = abs(heat_power)
+        heat_arrow_svg = down_arrow(347, RED)
+
     # battery_power > 0 = charging, < 0 = discharging / battery supply
     if battery_power > 0.05:
         battery_label = "Batterieladung"
@@ -104,8 +119,8 @@ def main() -> None:
         "DATE_TEXT": str(data["date_text"]),
         "SUN_HOURS": f'{float(data["sun_hours"]):.1f} h',
         "BATTERY_PERCENT": str(round_half_up(clamp(battery_percent, 0.0, 100.0))),
-        "HOUSE_POWER": f"{format_1(abs(house_power))} kW",
-        "HEAT_POWER": f"{format_1(abs(heat_power))} kW",
+        "HOUSE_POWER": f"{format_1(house_display)} kW",
+        "HEAT_POWER": f"{format_1(heat_display)} kW",
         "BATTERY_FLOW_LABEL": battery_label,
         "BATTERY_FLOW_POWER": f"{format_1(abs(battery_power))} kW",
         "GRID_LABEL": grid_label,
@@ -127,6 +142,8 @@ def main() -> None:
     rendered = template
 
     # Raw SVG fragments first; intentionally not XML-escaped.
+    rendered = rendered.replace("{{HOUSE_ARROW_SVG}}", house_arrow_svg)
+    rendered = rendered.replace("{{HEAT_ARROW_SVG}}", heat_arrow_svg)
     rendered = rendered.replace("{{BATTERY_ARROW_SVG}}", battery_arrow_svg)
     rendered = rendered.replace("{{GRID_ARROW_SVG}}", grid_arrow_svg)
 
