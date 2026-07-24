@@ -1,5 +1,7 @@
 from pathlib import Path
 import json
+import re
+import sys
 
 
 def main() -> None:
@@ -16,6 +18,13 @@ def main() -> None:
     rendered = template
     for key, value in data.items():
         rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
+
+    unresolved = sorted(set(re.findall(r"\{\{[A-Z0-9_]+\}\}", rendered)))
+    if unresolved:
+        print("Error: Unresolved placeholders found:", file=sys.stderr)
+        for item in unresolved:
+            print(f"  - {item}", file=sys.stderr)
+        sys.exit(1)
 
     output_dir.mkdir(exist_ok=True)
     output_path.write_text(rendered, encoding="utf-8")
