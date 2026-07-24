@@ -1,0 +1,11 @@
+{
+  "Body": {
+    "Data": {
+      "DAY_ENERGY": {"Unit": "Wh", "Values": {"1": 48321}}
+    }
+  },
+  "Head": {
+    "Status": {"Code": 0, "Reason": "", "UserMessage": ""},
+    "Timestamp": "2026-07-24T12:00:00+02:00"
+  }
+}
