@@ -5,7 +5,7 @@
   "heat_power_kw": 0.02,
   "battery_power_kw": -0.02,
   "_comment_battery_power_kw": "Positive = Batterieladung, negative = Batteriebezug/Entladung",
-  "grid_power_kw": -.01,
+  "grid_power_kw": -0.01,
   "_comment_grid_power_kw": "Positive = Einspeisung, negative = Netzbezug",
   "current_time": "14:36 Uhr",
   "date_text": "Freitag, 24. Juli 2026",
