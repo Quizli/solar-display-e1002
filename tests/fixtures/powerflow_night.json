@@ -1,0 +1,25 @@
+{
+  "Body": {
+    "Data": {
+      "Inverters": {
+        "1": {
+          "E_Total": 1833009.4658333333,
+          "P": 0.0
+        }
+      },
+      "Site": {
+        "E_Day": null,
+        "Meter_Location": "grid",
+        "Mode": "meter",
+        "P_Akku": null,
+        "P_Grid": 2700.2,
+        "P_Load": -2700.2,
+        "P_PV": 0.0
+      }
+    }
+  },
+  "Head": {
+    "Status": {"Code": 0, "Reason": "", "UserMessage": ""},
+    "Timestamp": "2026-07-23T23:15:00+02:00"
+  }
+}

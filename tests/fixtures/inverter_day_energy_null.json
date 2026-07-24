@@ -1,0 +1,14 @@
+{
+  "Body": {
+    "Data": {
+      "DAY_ENERGY": {"Unit": "Wh", "Value": null},
+      "PAC": {"Unit": "W", "Value": 0.0},
+      "TOTAL_ENERGY": {"Unit": "Wh", "Value": 1833009.4658333333},
+      "YEAR_ENERGY": {"Unit": "Wh", "Value": null}
+    }
+  },
+  "Head": {
+    "Status": {"Code": 0, "Reason": "", "UserMessage": ""},
+    "Timestamp": "2026-07-23T23:15:00+02:00"
+  }
+}

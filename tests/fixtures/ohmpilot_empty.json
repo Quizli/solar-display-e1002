@@ -1,0 +1,7 @@
+{
+  "Body": {"Data": {}},
+  "Head": {
+    "Status": {"Code": 0, "Reason": "", "UserMessage": ""},
+    "Timestamp": "2026-07-23T23:15:00+02:00"
+  }
+}
