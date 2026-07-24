@@ -1,5 +1,20 @@
 {
   "SOLAR_POWER": "12.4",
-  "DATE_TEXT": "24.07.2026",
-  "SUN_HOURS": "8.2 h"
+  "CURRENT_TIME": "14:36 Uhr",
+  "DATE_TEXT": "Freitag, 24. Juli 2026",
+  "SUN_HOURS": "8.2 h",
+  "BATTERY_PERCENT": "68",
+  "HOUSE_POWER": "3.1 kW",
+  "HEAT_POWER": "2.6 kW",
+  "BATTERY_FLOW_LABEL": "Batterieladung",
+  "BATTERY_FLOW_POWER": "2.6 kW",
+  "GRID_LABEL": "Einspeisung",
+  "GRID_POWER": "2.2 kW",
+  "SUNRISE": "05:50",
+  "SUNSET": "21:10",
+  "STORY_LINE_1": "Heute feiert unsere PV-Anlage 1’000 Tage Betrieb.",
+  "STORY_LINE_2": "Danke Sonne – du bringst uns jeden Tag ein Stück Energiezukunft!",
+  "DAY_YIELD": "42.7",
+  "SELF_CONSUMPTION": "68 %",
+  "CO2_SAVINGS": "21.3"
 }
