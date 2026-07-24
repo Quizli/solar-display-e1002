@@ -51,6 +51,10 @@ class FroniusClient:
         except FroniusClientError:
             return None
 
+    def get_meter_realtime_data(self) -> Mapping[str, Any]:
+        """Fetch all Smart Meter data without adding it to every live snapshot."""
+        return self.get("GetMeterRealtimeData.cgi", Scope="System")
+
     def get_live_payloads(self) -> Dict[str, Optional[Mapping[str, Any]]]:
         """Fetch required live data and independently optional components."""
         return {

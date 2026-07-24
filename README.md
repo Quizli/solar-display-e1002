@@ -16,11 +16,12 @@ Fronius Solar API v1 -> FroniusClient -> Adapter -> LiveData
 
 Die bestätigten Fronius-Mappings sind `P_PV / 1000` für Solarleistung,
 `-P_Load / 1000` für Hausverbrauch und `-P_Grid / 1000` für Netzleistung.
-`DAY_ENERGY` wird von Wh nach kWh umgerechnet. Fehlt der Tageswert oder ist er
-`null`, wird vorläufig `0.0` verwendet. Die Pflichtwerte `P_PV`, `P_Load` und
-`P_Grid` sowie der Zeitstempel werden dagegen validiert: fehlende, ungültige
-oder nicht endliche Werte brechen die Normalisierung ab, damit ein API-Fehler
-nicht als echter Null-Snapshot erscheint.
+Die nicht-null Inverterwerte aus `DAY_ENERGY.Values` (System Scope) werden
+summiert und von Wh nach kWh umgerechnet. Fehlt der Tageswert oder sind seine
+Inverterwerte `null`, wird vorläufig `0.0` verwendet. Die Pflichtwerte `P_PV`,
+`P_Load` und `P_Grid` sowie der Zeitstempel werden dagegen validiert: fehlende,
+ungültige oder nicht endliche Werte brechen die Normalisierung ab, damit ein
+API-Fehler nicht als echter Null-Snapshot erscheint.
 
 Storage und Ohmpilot sind optional. Fehlende Antworten, `null` oder leere
 `Data`-Objekte ergeben sichere Nullwerte mit `battery_available=false` bzw.
@@ -28,6 +29,10 @@ Storage und Ohmpilot sind optional. Fehlende Antworten, `null` oder leere
 das reale Ohmpilot-Leistungsfeld sind noch nicht bestätigt. Sie werden deshalb
 nicht geraten; ihre spätere Abbildung ist in getrennten Adapterfunktionen
 gekapselt.
+
+Smart-Meter-Daten sind explizit über `FroniusClient.get_meter_realtime_data()`
+abrufbar. Weil sie für das aktuelle Modell nicht benötigt werden, verursacht
+ein normaler Live-Snapshot keinen zusätzlichen Meter-Request.
 
 ### Manuellen Snapshot abrufen
 

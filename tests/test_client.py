@@ -17,6 +17,12 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/GetInverterRealtimeData.cgi"):
             body = {"Head": {"Status": {"Code": 0}}, "Body": {"Data": {}}}
             self.send_response(200)
+        elif self.path.startswith("/api/GetMeterRealtimeData.cgi"):
+            body = {
+                "Head": {"Status": {"Code": 0}},
+                "Body": {"Data": {"0": {"Model": "Smart Meter TS 65A-3"}}},
+            }
+            self.send_response(200)
         else:
             body = {"error": "offline"}
             self.send_response(503)
@@ -53,6 +59,9 @@ class FroniusClientTest(unittest.TestCase):
         self.assertIsNotNone(payloads["inverter_realtime"])
         self.assertIsNone(payloads["storage"])
         self.assertIsNone(payloads["ohmpilot"])
+        self.assertFalse(
+            any("GetMeterRealtimeData.cgi" in request for request in _Handler.requests)
+        )
         self.assertIn(
             "/api/GetInverterRealtimeData.cgi?Scope=System&DataCollection=CumulationInverterData",
             _Handler.requests,
@@ -61,6 +70,15 @@ class FroniusClientTest(unittest.TestCase):
     def test_required_request_failure_is_reported(self):
         with self.assertRaises(FroniusClientError):
             FroniusClient(self.base_url).get("missing.cgi")
+
+    def test_meter_data_has_explicit_system_scope_access(self):
+        payload = FroniusClient(self.base_url).get_meter_realtime_data()
+        self.assertEqual(
+            payload["Body"]["Data"]["0"]["Model"], "Smart Meter TS 65A-3"
+        )
+        self.assertEqual(
+            _Handler.requests, ["/api/GetMeterRealtimeData.cgi?Scope=System"]
+        )
 
     def test_base_url_and_timeout_are_validated(self):
         with self.assertRaises(ValueError):

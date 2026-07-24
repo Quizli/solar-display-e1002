@@ -44,10 +44,15 @@ def _day_energy(payload: Optional[Mapping[str, Any]]) -> float:
         return 0.0
     if not isinstance(day_energy, Mapping):
         raise FroniusDataError("DAY_ENERGY is invalid")
-    value = day_energy.get("Value")
-    if value is None:
-        return 0.0
-    return _finite_number(value, "DAY_ENERGY.Value") / 1000.0
+    values = day_energy.get("Values")
+    if not isinstance(values, Mapping):
+        raise FroniusDataError("DAY_ENERGY.Values is missing or invalid")
+
+    total_wh = 0.0
+    for inverter_id, value in values.items():
+        if value is not None:
+            total_wh += _finite_number(value, f"DAY_ENERGY.Values[{inverter_id!r}]")
+    return total_wh / 1000.0
 
 
 def _battery(_: Optional[Mapping[str, Any]]) -> Tuple[bool, float, float]:

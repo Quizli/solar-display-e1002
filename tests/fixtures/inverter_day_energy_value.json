@@ -1,7 +1,7 @@
 {
   "Body": {
     "Data": {
-      "DAY_ENERGY": {"Unit": "Wh", "Value": 48321}
+      "DAY_ENERGY": {"Unit": "Wh", "Values": {"1": 48321}}
     }
   },
   "Head": {

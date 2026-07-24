@@ -45,6 +45,14 @@ class NormalizeLiveDataTest(unittest.TestCase):
         )
         self.assertAlmostEqual(result.energy_today_kwh, 48.321)
 
+    def test_day_energy_sums_valid_values_for_multiple_inverters(self):
+        payload = fixture("inverter_day_energy_value.json")
+        payload["Body"]["Data"]["DAY_ENERGY"]["Values"].update(
+            {"2": 1679, "3": None}
+        )
+        result = normalize_live_data(self.power_flow, payload)
+        self.assertAlmostEqual(result.energy_today_kwh, 50.0)
+
     def test_missing_day_energy_payload_falls_back_to_zero(self):
         self.assertEqual(normalize_live_data(self.power_flow).energy_today_kwh, 0.0)
 
@@ -63,7 +71,13 @@ class NormalizeLiveDataTest(unittest.TestCase):
 
     def test_non_finite_day_energy_raises(self):
         payload = fixture("inverter_day_energy_value.json")
-        payload["Body"]["Data"]["DAY_ENERGY"]["Value"] = math.inf
+        payload["Body"]["Data"]["DAY_ENERGY"]["Values"]["1"] = math.inf
+        with self.assertRaises(FroniusDataError):
+            normalize_live_data(self.power_flow, payload)
+
+    def test_non_numeric_day_energy_raises(self):
+        payload = fixture("inverter_day_energy_value.json")
+        payload["Body"]["Data"]["DAY_ENERGY"]["Values"]["1"] = "48321"
         with self.assertRaises(FroniusDataError):
             normalize_live_data(self.power_flow, payload)
 
