@@ -139,8 +139,8 @@ def render_dashboard(data, template=None):
 
     chart_svg = chart_path("chart_solar_area", "none", 0, YELLOW)
     chart_svg += chart_path("chart_solar_line", BLACK, 2.2)
-    chart_svg += chart_path("chart_house_line", BLUE, 2)
-    chart_svg += chart_path("chart_battery_line", GREEN, 2)
+    chart_svg += chart_path("chart_house_line", BLUE, 2.5)
+    chart_svg += chart_path("chart_battery_line", GREEN, 2.5)
     for i in range(1, SEGMENT_COUNT + 1):
         values[f"SOLAR_SEG_{i:02d}_FILL"] = YELLOW if i <= solar_segments else WHITE
         values[f"BATTERY_SEG_{i:02d}_FILL"] = GREEN if i <= battery_segments else WHITE

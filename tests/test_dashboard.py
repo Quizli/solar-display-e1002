@@ -242,8 +242,15 @@ class DashboardTest(unittest.TestCase):
             self.assertIn(f'<text x="205" y="{y}"', template)
             self.assertNotIn(f'<text x="202" y="{y}"', template)
         self.assertIn(">Wärme</text>", template)
-        self.assertIn('<g transform="translate(-5 0)"><circle cx="589"', template)
+        self.assertIn('<g transform="translate(-9 0)"><circle cx="589"', template)
         self.assertIn('<line x1="632" y1="443" x2="645" y2="426"', template)
+        svg = render_dashboard({
+            "chart_solar_line": "M 1 1", "chart_house_line": "M 2 2",
+            "chart_battery_line": "M 3 3",
+        })
+        self.assertIn('d="M 1 1" fill="none" stroke="#000000" stroke-width="2.2"', svg)
+        self.assertIn('d="M 2 2" fill="none" stroke="#0057B8" stroke-width="2.5"', svg)
+        self.assertIn('d="M 3 3" fill="none" stroke="#149B24" stroke-width="2.5"', svg)
 
 
 class IgnoreFilesTest(unittest.TestCase):
