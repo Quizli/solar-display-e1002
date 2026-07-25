@@ -2,14 +2,13 @@ import tempfile
 import unittest
 from datetime import date, datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from fronius.model import LiveData
 from solar_data.storage import SolarDatabase, bucket_start
+from solar_data.timezones import ZURICH
 
 
 UTC = timezone.utc
-ZURICH = ZoneInfo("Europe/Zurich")
 
 
 def snapshot(timestamp, value=1.0, soc=50.0, energy=10.0, total=1000.0):
@@ -37,7 +36,9 @@ class StorageTest(unittest.TestCase):
         self.assertFalse(self.database.store_snapshot(item))
         latest = self.database.latest_snapshot()
         self.assertEqual(latest.timestamp, "2026-07-24T22:07:46.000000+00:00")
-        self.assertEqual(latest.to_dict() | {"timestamp": item.timestamp}, item.to_dict())
+        latest_values = latest.to_dict()
+        latest_values["timestamp"] = item.timestamp
+        self.assertEqual(latest_values, item.to_dict())
 
     def test_rejects_naive_timestamp(self):
         with self.assertRaises(ValueError):

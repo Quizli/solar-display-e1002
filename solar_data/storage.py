@@ -4,12 +4,11 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
-from zoneinfo import ZoneInfo
 
 from fronius.model import LiveData
+from .timezones import ZURICH
 
 
-ZURICH = ZoneInfo("Europe/Zurich")
 UTC = timezone.utc
 POWER_FIELDS = (
     "solar_power_kw",

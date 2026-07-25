@@ -34,6 +34,21 @@ Smart-Meter-Daten sind explizit über `FroniusClient.get_meter_realtime_data()`
 abrufbar. Weil sie für das aktuelle Modell nicht benötigt werden, verursacht
 ein normaler Live-Snapshot keinen zusätzlichen Meter-Request.
 
+### Installation
+
+Vor Tests oder manueller Ausführung werden die wenigen Laufzeitabhängigkeiten
+installiert:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+Python 3.9 und neuer verwenden `zoneinfo` aus der Standardbibliothek. Unter
+Python 3.8 wird automatisch `backports.zoneinfo` verwendet; `tzdata` stellt die
+IANA-Zeitzonendaten auch in reduzierten Python-/Docker-Umgebungen bereit. Die
+fachliche Zeitzone bleibt `Europe/Zurich`. Kanonische UTC-Speicherung und
+DST-Logik sind auf beiden Python-Varianten identisch.
+
 ### Manuellen Snapshot abrufen
 
 Die Base URL muss bis einschließlich `/solar_api/v1/` angegeben werden. Es
