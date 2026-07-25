@@ -125,8 +125,7 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
     sun_age = ((now_utc - sun.fetched_at.astimezone(timezone.utc)).total_seconds()
                if sun else None)
     display = dict(power)
-    displayed_heat = (power["heat_power_kw"]
-                      if snapshot and snapshot.heat_available else 0.0)
+    displayed_heat = max(0.0, power["heat_power_kw"] or 0.0)
     display.update({
         "display_house_power_kw": (max(0.0, power["house_power_kw"] - displayed_heat)
                                    if power["house_power_kw"] is not None else None),

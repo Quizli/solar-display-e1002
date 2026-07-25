@@ -28,7 +28,8 @@ class DashboardTest(unittest.TestCase):
 
     def snapshot(self, timestamp=None, battery=False, heat_available=True):
         self.db.store_snapshot(LiveData(timestamp=(timestamp or self.now).isoformat(), solar_power_kw=9,
-            house_power_kw=7, heat_power_kw=2, battery_soc_pct=0, battery_power_kw=0,
+            house_power_kw=7, heat_power_kw=2 if heat_available else 0,
+            battery_soc_pct=0, battery_power_kw=0,
             grid_power_kw=2, energy_today_kwh=0, battery_available=battery,
             heat_available=heat_available, energy_total_kwh=None))
 
@@ -48,15 +49,17 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(view["display"]["heat_power_kw"], 2.5)
         self.assertEqual(view["display"]["display_house_power_kw"], 6.0)
 
-    def test_small_house_kpi_subtracts_only_available_heat(self):
-        self.snapshot()
+    def test_small_house_kpi_uses_displayed_aggregate_heat(self):
+        self.snapshot(heat_available=False)
         self.aggregate(self.now-timedelta(minutes=5), 8, 5, 2, 0, 2, 1)
         view = build_live_view(self.db, self.now)
         self.assertEqual(view["display"]["house_power_kw"], 5)
         self.assertEqual(view["display"]["display_house_power_kw"], 3)
+        self.assertFalse(self.db.latest_snapshot().heat_available)
         self.assertEqual(self.db.latest_snapshot().house_power_kw, 7)
         svg = render_dashboard(view["display"])
         self.assertIn(">3.0 kW</text>", svg)
+        self.assertIn(">2.0 kW</text>", svg)
         self.assertEqual(view["display"]["chart_house_line"].count("M "), 1)
         self.assertIn(f"{power_y(5):.2f}".rstrip("0").rstrip("."),
                       view["display"]["chart_house_line"])
@@ -64,7 +67,7 @@ class DashboardTest(unittest.TestCase):
 
         self.db.connection.execute("DELETE FROM aggregates_5m")
         self.db.connection.commit()
-        self.assertEqual(build_live_view(self.db, self.now)["display"]["display_house_power_kw"], 5)
+        self.assertEqual(build_live_view(self.db, self.now)["display"]["display_house_power_kw"], 7)
 
     def test_small_house_kpi_handles_unavailable_and_excess_heat(self):
         self.snapshot(heat_available=False)
