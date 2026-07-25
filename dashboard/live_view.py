@@ -4,6 +4,7 @@ from typing import Dict, Optional
 
 from solar_data.storage import POWER_FIELDS, SolarDatabase, _aware_utc
 from solar_data.timezones import ZURICH
+from .chart import build_chart
 
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 MONTHS = ("", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember")
@@ -103,6 +104,9 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
     local_timestamp = power_timestamp.astimezone(ZURICH) if power_timestamp else None
     local_day = local_timestamp.date() if local_timestamp else now.astimezone(ZURICH).date()
     daily = database.daily_energy(local_day) if power_timestamp else None
+    chart_local_day = now_utc.astimezone(ZURICH).date()
+    day_aggregates = database.aggregates_for_local_day(chart_local_day)
+    chart = build_chart(day_aggregates, chart_local_day, now_utc)
 
     if freshness == "stale":
         story_1 = "Datenstand {} Uhr".format(local_timestamp.strftime("%H:%M"))
@@ -134,7 +138,11 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "co2_savings_kg": co2_savings,
         "story_line_1": story_1, "story_line_2": story_2,
         "day_yield_kwh": day_yield,
-        "self_consumption_percent": _self_consumption(database.aggregates_for_local_day(local_day)),
+        "self_consumption_percent": _self_consumption(day_aggregates),
+        "chart_solar_area": chart.solar_area,
+        "chart_solar_line": chart.solar_line,
+        "chart_house_line": chart.house_line,
+        "chart_battery_line": chart.battery_line,
     })
     return {
         "freshness": freshness,
@@ -150,5 +158,14 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "sun_data_age_seconds": max(0.0, sun_age) if sun_age is not None else None,
         "sun_data_error": sun_result.error if sun_result else None,
         "co2": {"savings_kg": co2_savings, "factor_kg_per_kwh": factor, "basis": CO2_BASIS},
+        "chart_status": {
+            "chart_source": "aggregates_5m", "local_day": chart_local_day.isoformat(),
+            "aggregate_count": len(day_aggregates),
+            "latest_aggregate_timestamp": chart.latest_timestamp,
+            "battery_chart_available": chart.battery_available,
+            "number_of_solar_points": chart.solar_points,
+            "number_of_house_points": chart.house_points,
+            "number_of_battery_points": chart.battery_points,
+        },
         "display": display,
     }
