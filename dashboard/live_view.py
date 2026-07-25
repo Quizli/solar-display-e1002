@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import math
 from typing import Dict, Optional
 
 from solar_data.storage import POWER_FIELDS, SolarDatabase, _aware_utc
@@ -50,8 +51,24 @@ def _select_power_rows(rows, reference):
     return selected, "one_recent_aggregate"
 
 
+CO2_BASIS = "Swiss average consumer electricity mix"
+
+
+def validate_co2_factor(value):
+    if isinstance(value, bool):
+        raise ValueError("CO2 factor must be a finite non-negative number")
+    try:
+        value = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("CO2 factor must be a finite non-negative number") from exc
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("CO2 factor must be a finite non-negative number")
+    return value
+
+
 def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
-                    stale_seconds: float = 180.0) -> Dict[str, object]:
+                    stale_seconds: float = 180.0, sun_result=None,
+                    co2_factor: float = 0.128) -> Dict[str, object]:
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
@@ -97,6 +114,12 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         story_1 = "Keine Solardaten verfügbar"
         story_2 = "Datenerfassung prüfen"
 
+    factor = validate_co2_factor(co2_factor)
+    day_yield = daily.energy_today_kwh if daily else None
+    co2_savings = max(0.0, day_yield) * factor if day_yield is not None else None
+    sun = sun_result.data if sun_result else None
+    sun_age = ((now_utc - sun.fetched_at.astimezone(timezone.utc)).total_seconds()
+               if sun else None)
     display = dict(power)
     display.update({
         "battery_percent": snapshot.battery_soc_pct if snapshot and snapshot.battery_available else None,
@@ -105,9 +128,12 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "date_text": ("{}, {}. {} {}".format(WEEKDAYS[local_timestamp.weekday()], local_timestamp.day,
                                               MONTHS[local_timestamp.month], local_timestamp.year)
                       if local_timestamp else "—"),
-        "sun_hours": None, "sunrise": None, "sunset": None, "co2_savings_kg": None,
+        "sun_hours": sun.sunshine_hours if sun else None,
+        "sunrise": sun.sunrise.strftime("%H:%M") if sun else None,
+        "sunset": sun.sunset.strftime("%H:%M") if sun else None,
+        "co2_savings_kg": co2_savings,
         "story_line_1": story_1, "story_line_2": story_2,
-        "day_yield_kwh": daily.energy_today_kwh if daily else None,
+        "day_yield_kwh": day_yield,
         "self_consumption_percent": _self_consumption(database.aggregates_for_local_day(local_day)),
     })
     return {
@@ -118,5 +144,11 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "power_selection_reason": selection_reason,
         "power_bucket_count": len(rows),
         "daily_energy": ({"source": daily.source, "complete": daily.complete} if daily else None),
+        "sun_data_status": sun_result.status if sun_result else "missing",
+        "sun_data_source": sun_result.source if sun_result else "none",
+        "sun_data_fetched_at": sun.fetched_at.isoformat() if sun else None,
+        "sun_data_age_seconds": max(0.0, sun_age) if sun_age is not None else None,
+        "sun_data_error": sun_result.error if sun_result else None,
+        "co2": {"savings_kg": co2_savings, "factor_kg_per_kwh": factor, "basis": CO2_BASIS},
         "display": display,
     }

@@ -183,6 +183,37 @@ bei fehlenden Daten oder einem Renderfehler bleibt das letzte gute SVG erhalten.
 `SOLAR_DB_PATH`, `DASHBOARD_OUTPUT_PATH`, `DASHBOARD_REFRESH_SECONDS` und
 `DASHBOARD_STALE_SECONDS` überschreiben die Defaults.
 
+### Sonnenprognose und CO₂-Ersparnis
+
+Sonnenaufgang, Sonnenuntergang und die prognostizierten Sonnenstunden für den
+heutigen lokalen Tag stammen aus der Open-Meteo Forecast API. Open-Meteos
+`sunshine_duration` ist die prognostizierte Sonnenscheindauer in Sekunden; das
+Dashboard rechnet sie in Stunden um. Es handelt sich ausdrücklich um eine
+Tagesprognose, nicht um historische Messdaten oder eine aus Bewölkung
+abgeleitete Näherung.
+
+Für den produktiven Abruf müssen `SOLAR_LAT` und `SOLAR_LON` in der lokalen
+`.env` gesetzt werden. Die Vorlage enthält absichtlich keine privaten
+Koordinaten. Standardmäßig wird Open-Meteo höchstens alle 1.800 Sekunden
+abgerufen und die letzte gültige Antwort atomar gespeichert. Der lokale
+CLI-Default ist `data/sun-data.json`; Compose setzt für den Publisher explizit
+`SUN_DATA_CACHE_PATH=/data/sun-data.json`. Damit liegt der Docker-Cache im
+bestehenden persistenten Mount `./data:/data` und benötigt kein weiteres
+Volume. Bei einem
+API-Ausfall bleibt ein Cache des heutigen Zürcher Kalendertags bis zu 21.600
+Sekunden nutzbar. Danach erscheinen für alle drei Sonnenwerte neutrale Striche;
+die Veröffentlichung der vorhandenen Solar-KPIs läuft trotzdem weiter.
+`SUN_DATA_REFRESH_SECONDS` und `SUN_DATA_MAX_AGE_SECONDS` konfigurieren diese
+Intervalle.
+
+Die tägliche CO₂-Ersparnis wird aus dem realen Tagesertrag und standardmäßig
+`CO2_AVOIDED_KG_PER_KWH=0.128` berechnet. Die 128 g CO₂eq/kWh dienen als
+Vergleich zum durchschnittlichen Schweizer Verbraucher-Strommix. Der Wert ist
+eine Schätzung der vermiedenen Klimawirkung und keine vollständige
+Lebenszyklusanalyse der PV-Anlage. Faktor, Berechnung und Vergleichsbasis sind
+auch in der JSON-Statusausgabe dokumentiert; ungültige Faktoren werden als
+Konfigurationsfehler abgelehnt.
+
 Für Docker wird `SOLAR_DB_PATH` im Compose-File bewusst auf `/data/solar.db`
 gesetzt, während `.env.example` den lokalen Pfad dokumentiert. `./data` und
 `./publish` sind persistente Bind-Mounts. Nach dem Kopieren und Ausfüllen der
@@ -196,13 +227,13 @@ Das Dashboard ist anschließend unter
 `http://<NAS-IP>:8088/dashboard.svg` erreichbar. Diagnose:
 
 ```bash
-docker compose logs -f collector dashboard-publisher
-docker compose exec dashboard-publisher python3 -m dashboard status
+sudo docker compose logs --tail=50 dashboard-publisher
+sudo docker compose exec dashboard-publisher python3 -m dashboard status
 ```
 
-Wetter, Vorhersage, Sonnenzeiten, Charts, CO₂-Berechnung, wechselnde Facts und
-eine direkte E1002-Upload-API sind bewusst nicht Teil dieser Etappe. Bis dahin
-zeigt das eingefrorene Layout neutrale Striche und einen festen Live-Hinweis.
+Allgemeine Wetterdaten, Temperatur, Wettericons, Niederschlag, Charts,
+wechselnde Facts, historische Sonnenstunden und eine direkte E1002-Upload-API
+sind bewusst nicht Teil dieser Etappe.
 
 ### Docker-Build-Kontext und Dateirechte
 
@@ -215,8 +246,8 @@ die lokale Datei ausschließlich zur Variablensubstitution und gibt jedem Dienst
 nur seine benötigten Variablen weiter; Wettervariablen werden keinem Container
 übergeben. `.env` darf weder committed noch in ein Image kopiert werden.
 
-Collector und Publisher laufen nicht als root. Vor dem ersten Start werden die
-lokalen IDs ermittelt:
+Collector und Publisher laufen als `SOLAR_UID:SOLAR_GID` und nicht als root.
+Vor dem ersten Start werden die lokalen IDs ermittelt:
 
 ```bash
 id -u
@@ -226,4 +257,8 @@ id -g
 Die Ergebnisse werden lokal als `SOLAR_UID` und `SOLAR_GID` in `.env`
 eingetragen. Die Host-Verzeichnisse `./data` und `./publish` müssen für diesen
 Benutzer beziehungsweise diese Gruppe schreibbar sein. Es werden bewusst keine
-realen NAS- oder Benutzer-IDs im Repository vorgegeben.
+realen NAS- oder Benutzer-IDs im Repository vorgegeben. Das atomisch
+publizierte `dashboard.svg` erhält bewusst den Modus `0644`, damit der separate
+Nginx-Service die Datei lesen kann. Das Verzeichnis `publish/` muss für Nginx
+außerdem mindestens durchsuchbar sein; globale Schreibrechte wie `0666` oder
+`0777` sind weder notwendig noch vorgesehen.
