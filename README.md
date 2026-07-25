@@ -149,3 +149,55 @@ niemals nach GitHub, in den Code, in PR-Beschreibungen oder in die Dokumentation
 
 Noch offen sind reale Tests von `DAY_ENERGY` tagsüber und der Batterie nach ihrer
 Installation. Bis dahin bleiben die bestätigten Adapter-Fallbacks unverändert.
+
+## Live-Dashboard-Publisher
+
+Die produktive Datenstrecke ist jetzt vollständig entkoppelt:
+
+```text
+Fronius -> Collector -> SQLite -> Dashboard-Publisher -> publish/dashboard.svg -> Nginx -> E1002
+```
+
+Der Collector speichert weiterhin typischerweise alle zehn Sekunden. Das davon
+unabhängige Display-Intervall beträgt standardmäßig fünf Minuten. Für Solar-,
+Haus-, Ohmpilot-, Batterie- und Netzleistung verwendet der Publisher die zwei
+neuesten abgeschlossenen 5-Minuten-Buckets und gewichtet sie nach deren
+`sample_count`. Ein einzelner Bucket beziehungsweise der letzte gültige
+Raw-Snapshot dienen als Fallback. Der Hauswert enthält die Ohmpilot-Leistung
+bereits. Der Tagesertrag kommt ausschließlich aus `SolarDatabase.daily_energy()`;
+der Eigenverbrauch wird aus den Tagesaggregaten integriert.
+
+Lokale Befehle verwenden standardmäßig `data/solar.db` und
+`publish/dashboard.svg`:
+
+```bash
+python3 -m dashboard once
+python3 -m dashboard status
+python3 -m dashboard loop
+```
+
+`status` schreibt nur das abgeleitete JSON-Modell. `once` publiziert atomar;
+bei fehlenden Daten oder einem Renderfehler bleibt das letzte gute SVG erhalten.
+`SOLAR_DB_PATH`, `DASHBOARD_OUTPUT_PATH`, `DASHBOARD_REFRESH_SECONDS` und
+`DASHBOARD_STALE_SECONDS` überschreiben die Defaults.
+
+Für Docker wird `SOLAR_DB_PATH` im Compose-File bewusst auf `/data/solar.db`
+gesetzt, während `.env.example` den lokalen Pfad dokumentiert. `./data` und
+`./publish` sind persistente Bind-Mounts. Nach dem Kopieren und Ausfüllen der
+sicheren `.env`-Vorlage startet der Dauerbetrieb mit:
+
+```bash
+docker compose up -d --build
+```
+
+Das Dashboard ist anschließend unter
+`http://<NAS-IP>:8088/dashboard.svg` erreichbar. Diagnose:
+
+```bash
+docker compose logs -f collector dashboard-publisher
+docker compose exec dashboard-publisher python3 -m dashboard status
+```
+
+Wetter, Vorhersage, Sonnenzeiten, Charts, CO₂-Berechnung, wechselnde Facts und
+eine direkte E1002-Upload-API sind bewusst nicht Teil dieser Etappe. Bis dahin
+zeigt das eingefrorene Layout neutrale Striche und einen festen Live-Hinweis.

@@ -1,4 +1,33 @@
 services:
+  collector:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    image: solar-display-python:local
+    container_name: solar-display-collector
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SOLAR_DB_PATH: /data/solar.db
+    volumes:
+      - ./data:/data
+    command: ["python3", "-m", "collector", "--db-path", "/data/solar.db", "loop"]
+
+  dashboard-publisher:
+    image: solar-display-python:local
+    container_name: solar-display-publisher
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SOLAR_DB_PATH: /data/solar.db
+      DASHBOARD_OUTPUT_PATH: /publish/dashboard.svg
+    volumes:
+      - ./data:/data
+      - ./publish:/publish
+    command: ["python3", "-m", "dashboard", "loop"]
+    depends_on:
+      - collector
+
   web:
     image: nginx:stable-alpine
     container_name: solar-display-web
@@ -8,3 +37,5 @@ services:
     volumes:
       - ./publish:/usr/share/nginx/html:ro
       - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - dashboard-publisher
