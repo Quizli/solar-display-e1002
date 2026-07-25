@@ -1,26 +1,36 @@
+x-python-image: &python-image
+  image: solar-display-python:local
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile
+
 services:
   collector:
-    build:
-      context: .
-      dockerfile: deploy/Dockerfile
-    image: solar-display-python:local
+    <<: *python-image
     container_name: solar-display-collector
     restart: unless-stopped
-    env_file: .env
+    user: "${SOLAR_UID}:${SOLAR_GID}"
     environment:
+      FRONIUS_BASE_URL: "${FRONIUS_BASE_URL}"
       SOLAR_DB_PATH: /data/solar.db
+      SOLAR_POLL_INTERVAL_SECONDS: "${SOLAR_POLL_INTERVAL_SECONDS:-10}"
+      SOLAR_RAW_RETENTION_DAYS: "${SOLAR_RAW_RETENTION_DAYS:-7}"
+      TZ: "${TZ:-Europe/Zurich}"
     volumes:
       - ./data:/data
     command: ["python3", "-m", "collector", "--db-path", "/data/solar.db", "loop"]
 
   dashboard-publisher:
-    image: solar-display-python:local
+    <<: *python-image
     container_name: solar-display-publisher
     restart: unless-stopped
-    env_file: .env
+    user: "${SOLAR_UID}:${SOLAR_GID}"
     environment:
       SOLAR_DB_PATH: /data/solar.db
       DASHBOARD_OUTPUT_PATH: /publish/dashboard.svg
+      DASHBOARD_REFRESH_SECONDS: "${DASHBOARD_REFRESH_SECONDS:-300}"
+      DASHBOARD_STALE_SECONDS: "${DASHBOARD_STALE_SECONDS:-180}"
+      TZ: "${TZ:-Europe/Zurich}"
     volumes:
       - ./data:/data
       - ./publish:/publish

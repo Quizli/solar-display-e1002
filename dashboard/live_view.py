@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from typing import Callable, Dict, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Optional
 
 from solar_data.storage import POWER_FIELDS, SolarDatabase, _aware_utc
 from solar_data.timezones import ZURICH
@@ -27,35 +27,65 @@ def _self_consumption(rows):
     return consumed / produced * 100.0
 
 
+def _select_power_rows(rows, reference):
+    """Select only recent, completed and contiguous UTC aggregate buckets."""
+    if not rows:
+        return [], "no_aggregates"
+    newest = rows[-1]
+    newest_start = _aware_utc(newest.bucket_start)
+    newest_end = newest_start + timedelta(minutes=5)
+    age = reference - newest_end
+    if age.total_seconds() < 0:
+        return [], "newest_bucket_not_completed"
+    if age > timedelta(minutes=10):
+        return [], "newest_bucket_too_old"
+    selected = [newest]
+    if len(rows) > 1:
+        previous = rows[-2]
+        previous_start = _aware_utc(previous.bucket_start)
+        if previous_start + timedelta(minutes=5) == newest_start:
+            selected.insert(0, previous)
+            return selected, "two_recent_contiguous_aggregates"
+        return selected, "newest_recent_aggregate_after_gap"
+    return selected, "one_recent_aggregate"
+
+
 def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
                     stale_seconds: float = 180.0) -> Dict[str, object]:
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
+    now_utc = now.astimezone(timezone.utc)
     snapshot = database.latest_snapshot()
-    rows = database.latest_aggregates(2)
-    timestamp = _aware_utc(snapshot.timestamp) if snapshot else None
-    if timestamp is None and rows:
-        timestamp = _aware_utc(rows[-1].bucket_start)
-    if timestamp is None:
+    snapshot_timestamp = _aware_utc(snapshot.timestamp) if snapshot else None
+    reference = snapshot_timestamp or now_utc
+    candidate_rows = database.latest_aggregates(2)
+    rows, selection_reason = _select_power_rows(candidate_rows, reference)
+
+    if snapshot_timestamp is None:
         freshness = "missing"
-    elif (now.astimezone(timezone.utc) - timestamp).total_seconds() > stale_seconds:
+    elif (now_utc - snapshot_timestamp).total_seconds() > stale_seconds:
         freshness = "stale"
     else:
         freshness = "fresh"
 
-    local_timestamp = timestamp.astimezone(ZURICH) if timestamp else None
-    local_day = local_timestamp.date() if local_timestamp else now.astimezone(ZURICH).date()
-    daily = database.daily_energy(local_day) if timestamp else None
     if rows:
         power = {field: _weighted(rows, field) for field in POWER_FIELDS}
         power_source = "aggregates_5m"
+        power_timestamp = _aware_utc(rows[-1].bucket_start) + timedelta(minutes=5)
     elif snapshot:
         power = {field: getattr(snapshot, field) for field in POWER_FIELDS}
         power_source = "raw_snapshot"
+        power_timestamp = snapshot_timestamp
+        selection_reason += "_raw_snapshot_fallback"
     else:
         power = {field: None for field in POWER_FIELDS}
         power_source = "missing"
+        power_timestamp = None
+
+    local_timestamp = power_timestamp.astimezone(ZURICH) if power_timestamp else None
+    local_day = local_timestamp.date() if local_timestamp else now.astimezone(ZURICH).date()
+    daily = database.daily_energy(local_day) if power_timestamp else None
 
     if freshness == "stale":
         story_1 = "Datenstand {} Uhr".format(local_timestamp.strftime("%H:%M"))
@@ -82,8 +112,10 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
     })
     return {
         "freshness": freshness,
-        "timestamp_utc": timestamp.isoformat() if timestamp else None,
+        "latest_snapshot_timestamp": snapshot_timestamp.isoformat() if snapshot_timestamp else None,
+        "power_timestamp": power_timestamp.isoformat() if power_timestamp else None,
         "power_source": power_source,
+        "power_selection_reason": selection_reason,
         "power_bucket_count": len(rows),
         "daily_energy": ({"source": daily.source, "complete": daily.complete} if daily else None),
         "display": display,

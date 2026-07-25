@@ -132,10 +132,9 @@ python3 -m collector --db-path data/solar.db aggregate
 FRONIUS_BASE_URL=http://fronius-host.example/solar_api/v1/ python3 -m collector loop
 ```
 
-Eine produktive Compose-Aktivierung ist absichtlich noch nicht enthalten, damit
-ein Pull keinen neuen Dauerprozess startet. Für einen späteren Container müssen
-`FRONIUS_BASE_URL` und `SOLAR_DB_PATH` gesetzt und das Elternverzeichnis der DB
-als persistentes Volume eingebunden werden.
+Der produktive Compose-Betrieb startet Collector, Publisher und Webserver als
+getrennte Dienste. `FRONIUS_BASE_URL` wird lokal über `.env` gesetzt; der
+Containerpfad der persistenten Datenbank ist fest `/data/solar.db`.
 
 Für eine lokale Konfiguration kann die sichere Vorlage kopiert werden:
 
@@ -201,3 +200,27 @@ docker compose exec dashboard-publisher python3 -m dashboard status
 Wetter, Vorhersage, Sonnenzeiten, Charts, CO₂-Berechnung, wechselnde Facts und
 eine direkte E1002-Upload-API sind bewusst nicht Teil dieser Etappe. Bis dahin
 zeigt das eingefrorene Layout neutrale Striche und einen festen Live-Hinweis.
+
+### Docker-Build-Kontext und Dateirechte
+
+`.gitignore` verhindert, dass lokale Konfiguration und Laufzeitdaten versehentlich
+in Git aufgenommen werden. Zusätzlich schützt `.dockerignore` den Build-Kontext
+bei `COPY . .`: Insbesondere `.env`, SQLite-Dateien, `data/`, `publish/` und
+Renderer-Ausgaben werden nicht an den Docker-Daemon übertragen und nicht ins
+Image kopiert. Die Anwendung benötigt keine `.env` im Image. Compose verwendet
+die lokale Datei ausschließlich zur Variablensubstitution und gibt jedem Dienst
+nur seine benötigten Variablen weiter; Wettervariablen werden keinem Container
+übergeben. `.env` darf weder committed noch in ein Image kopiert werden.
+
+Collector und Publisher laufen nicht als root. Vor dem ersten Start werden die
+lokalen IDs ermittelt:
+
+```bash
+id -u
+id -g
+```
+
+Die Ergebnisse werden lokal als `SOLAR_UID` und `SOLAR_GID` in `.env`
+eingetragen. Die Host-Verzeichnisse `./data` und `./publish` müssen für diesen
+Benutzer beziehungsweise diese Gruppe schreibbar sein. Es werden bewusst keine
+realen NAS- oder Benutzer-IDs im Repository vorgegeben.

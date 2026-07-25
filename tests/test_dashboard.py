@@ -40,6 +40,39 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(view["display"]["house_power_kw"], 8.5)
         self.assertEqual(view["display"]["heat_power_kw"], 2.5)
 
+    def test_old_aggregates_fall_back_to_fresh_raw_snapshot(self):
+        self.snapshot()
+        self.aggregate(self.now-timedelta(hours=3), 2, 3, 1, 0, 1, 2)
+        view = build_live_view(self.db, self.now)
+        self.assertEqual(view["power_source"], "raw_snapshot")
+        self.assertEqual(view["display"]["solar_power_kw"], 9)
+        self.assertIn("too_old", view["power_selection_reason"])
+
+    def test_previous_evening_aggregate_is_not_morning_power(self):
+        morning = datetime(2026, 7, 26, 6, 0, tzinfo=timezone.utc)
+        self.snapshot(morning)
+        self.aggregate(datetime(2026, 7, 25, 20, 0, tzinfo=timezone.utc), 15, 3, 1, 0, 12, 2)
+        view = build_live_view(self.db, morning)
+        self.assertEqual(view["power_source"], "raw_snapshot")
+        self.assertEqual(view["display"]["solar_power_kw"], 9)
+
+    def test_gap_uses_only_newest_recent_bucket(self):
+        self.snapshot()
+        self.aggregate(self.now-timedelta(minutes=15), 2, 4, 1, 0, 1, 5)
+        self.aggregate(self.now-timedelta(minutes=5), 8, 10, 3, 0, 2, 1)
+        view = build_live_view(self.db, self.now)
+        self.assertEqual(view["power_bucket_count"], 1)
+        self.assertEqual(view["display"]["solar_power_kw"], 8)
+        self.assertEqual(view["power_selection_reason"], "newest_recent_aggregate_after_gap")
+
+    def test_aggregate_power_timestamp_is_bucket_end_and_separate_from_snapshot(self):
+        self.snapshot(self.now + timedelta(minutes=2))
+        self.aggregate(self.now-timedelta(minutes=5), 8, 10, 3, 0, 2, 1)
+        view = build_live_view(self.db, self.now + timedelta(minutes=2))
+        self.assertEqual(view["latest_snapshot_timestamp"], (self.now+timedelta(minutes=2)).isoformat())
+        self.assertEqual(view["power_timestamp"], self.now.isoformat())
+        self.assertEqual(view["display"]["current_time"], "13:05 Uhr")
+
     def test_one_bucket_then_raw_fallback(self):
         self.snapshot()
         self.aggregate(self.now-timedelta(minutes=5), 4, 5, 2, 0, 1, 2)
@@ -99,6 +132,13 @@ class DashboardTest(unittest.TestCase):
             output = Path(directory) / "sample.svg"
             self.assertEqual(render_main(["--output", str(output)]), 0)
             self.assertIn("<svg", output.read_text(encoding="utf-8"))
+
+
+class DockerIgnoreTest(unittest.TestCase):
+    def test_runtime_data_and_environment_are_excluded(self):
+        rules = Path(".dockerignore").read_text(encoding="utf-8").splitlines()
+        for required in (".env", "data/", "publish/"):
+            self.assertIn(required, rules)
 
 
 if __name__ == "__main__":
