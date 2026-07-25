@@ -119,6 +119,16 @@ ein Pull keinen neuen Dauerprozess startet. Für einen späteren Container müss
 `FRONIUS_BASE_URL` und `SOLAR_DB_PATH` gesetzt und das Elternverzeichnis der DB
 als persistentes Volume eingebunden werden.
 
+Für eine lokale Konfiguration kann die sichere Vorlage kopiert werden:
+
+```bash
+cp .env.example .env
+```
+
+`.env` bleibt ausschließlich lokal und wird durch `.gitignore` nicht committed.
+Die Vorlage enthält keine Zugangsdaten. Echte API-Keys und andere Secrets gehören
+niemals nach GitHub, in den Code, in PR-Beschreibungen oder in die Dokumentation.
+
 Noch offen sind reale Tests von `DAY_ENERGY` tagsüber, einem aktiven Ohmpilot
 und der Batterie nach ihrer Installation. Bis dahin bleiben die bestätigten
 Adapter-Fallbacks unverändert.
