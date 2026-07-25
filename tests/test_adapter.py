@@ -40,6 +40,49 @@ class NormalizeLiveDataTest(unittest.TestCase):
         self.assertEqual(result.energy_today_kwh, 0.0)
         self.assertAlmostEqual(result.energy_total_kwh, 1833.0094658333333)
 
+    def test_active_ohmpilot_power_is_normalized_without_changing_house_power(self):
+        result = normalize_live_data(
+            self.power_flow, ohmpilot=fixture("ohmpilot_active.json")
+        )
+        self.assertTrue(result.heat_available)
+        self.assertAlmostEqual(result.heat_power_kw, 2.681)
+        self.assertAlmostEqual(result.house_power_kw, 2.7002)
+
+    def test_multiple_valid_ohmpilot_devices_are_summed(self):
+        payload = {
+            "Body": {"Data": {
+                "0": {"PowerReal_PAC_Sum": 1000},
+                "1": {"PowerReal_PAC_Sum": 1681.0},
+            }}
+        }
+        result = normalize_live_data(self.power_flow, ohmpilot=payload)
+        self.assertTrue(result.heat_available)
+        self.assertAlmostEqual(result.heat_power_kw, 2.681)
+
+    def test_invalid_optional_ohmpilot_values_are_ignored(self):
+        payload = {
+            "Body": {"Data": {
+                "0": {"PowerReal_PAC_Sum": None},
+                "1": {"PowerReal_PAC_Sum": True},
+                "2": {"PowerReal_PAC_Sum": "2681"},
+                "3": {"PowerReal_PAC_Sum": -1},
+                "4": {"PowerReal_PAC_Sum": math.inf},
+                "5": {"PowerReal_PAC_Sum": math.nan},
+                "6": "invalid device",
+            }}
+        }
+        result = normalize_live_data(self.power_flow, ohmpilot=payload)
+        self.assertFalse(result.heat_available)
+        self.assertEqual(result.heat_power_kw, 0.0)
+        self.assertAlmostEqual(result.house_power_kw, 2.7002)
+
+    def test_missing_or_invalid_optional_ohmpilot_data_is_unavailable(self):
+        for payload in (None, {}, {"Body": {}}, {"Body": {"Data": {}}}):
+            with self.subTest(payload=payload):
+                result = normalize_live_data(self.power_flow, ohmpilot=payload)
+                self.assertFalse(result.heat_available)
+                self.assertEqual(result.heat_power_kw, 0.0)
+
     def test_site_total_energy_is_preferred_and_converted_to_kwh(self):
         self.power_flow["Body"]["Data"]["Site"]["E_Total"] = 2_500_000
         result = normalize_live_data(self.power_flow)

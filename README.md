@@ -25,9 +25,12 @@ API-Fehler nicht als echter Null-Snapshot erscheint.
 
 Storage und Ohmpilot sind optional. Fehlende Antworten, `null` oder leere
 `Data`-Objekte ergeben sichere Nullwerte mit `battery_available=false` bzw.
-`heat_available=false`. Die realen Storage-Felder, deren Leistungsrichtung und
-das reale Ohmpilot-Leistungsfeld sind noch nicht bestätigt. Sie werden deshalb
-nicht geraten; ihre spätere Abbildung ist in getrennten Adapterfunktionen
+`heat_available=false`. Für Ohmpilot ist `PowerReal_PAC_Sum` inzwischen als
+Leistung in Watt bestätigt; gültige Werte aller Geräte werden summiert und als
+`heat_power_kw` ausgewiesen. Diese Leistung ist bereits in `-P_Load` und damit
+in `house_power_kw` enthalten: Sie wird weder davon abgezogen noch zusätzlich
+zum Hausverbrauch addiert. Die realen Storage-Felder und deren Leistungsrichtung
+sind noch nicht bestätigt und bleiben in einer getrennten Adapterfunktion
 gekapselt.
 
 Smart-Meter-Daten sind explizit über `FroniusClient.get_meter_realtime_data()`
@@ -144,6 +147,5 @@ cp .env.example .env
 Die Vorlage enthält keine Zugangsdaten. Echte API-Keys und andere Secrets gehören
 niemals nach GitHub, in den Code, in PR-Beschreibungen oder in die Dokumentation.
 
-Noch offen sind reale Tests von `DAY_ENERGY` tagsüber, einem aktiven Ohmpilot
-und der Batterie nach ihrer Installation. Bis dahin bleiben die bestätigten
-Adapter-Fallbacks unverändert.
+Noch offen sind reale Tests von `DAY_ENERGY` tagsüber und der Batterie nach ihrer
+Installation. Bis dahin bleiben die bestätigten Adapter-Fallbacks unverändert.

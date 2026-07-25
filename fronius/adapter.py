@@ -91,10 +91,28 @@ def _battery(_: Optional[Mapping[str, Any]]) -> Tuple[bool, float, float]:
     return False, 0.0, 0.0
 
 
-def _heat(_: Optional[Mapping[str, Any]]) -> Tuple[bool, float]:
-    # The installed Ohmpilot currently returns {}. Its live power field must be
-    # verified before a value can safely be mapped here.
-    return False, 0.0
+def _heat(payload: Optional[Mapping[str, Any]]) -> Tuple[bool, float]:
+    """Sum confirmed, optional Ohmpilot real-power values."""
+    if payload is None:
+        return False, 0.0
+    body = payload.get("Body")
+    data = body.get("Data") if isinstance(body, Mapping) else None
+    if not isinstance(data, Mapping):
+        return False, 0.0
+
+    powers = []
+    for device in data.values():
+        value = (
+            device.get("PowerReal_PAC_Sum")
+            if isinstance(device, Mapping)
+            else None
+        )
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        power_w = float(value)
+        if math.isfinite(power_w) and power_w >= 0:
+            powers.append(power_w)
+    return (True, sum(powers) / 1000.0) if powers else (False, 0.0)
 
 
 def normalize_live_data(
