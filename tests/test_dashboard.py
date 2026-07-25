@@ -9,11 +9,12 @@ from pathlib import Path
 
 from dashboard.live_view import build_live_view
 from dashboard.live_view import validate_co2_factor
+from dashboard.chart import power_y
 from dashboard.__main__ import _positive, _sun_coordinates
 from sun_data.cache import SunDataResult
 from dashboard.publisher import publish_view
 from fronius.model import LiveData
-from renderer.src.render import main as render_main, render_dashboard
+from renderer.src.render import format_day_yield, main as render_main, render_dashboard
 from solar_data.storage import SolarDatabase, _utc_text
 
 
@@ -25,11 +26,11 @@ class DashboardTest(unittest.TestCase):
     def tearDown(self):
         self.db.close()
 
-    def snapshot(self, timestamp=None, battery=False):
+    def snapshot(self, timestamp=None, battery=False, heat_available=True):
         self.db.store_snapshot(LiveData(timestamp=(timestamp or self.now).isoformat(), solar_power_kw=9,
             house_power_kw=7, heat_power_kw=2, battery_soc_pct=0, battery_power_kw=0,
             grid_power_kw=2, energy_today_kwh=0, battery_available=battery,
-            heat_available=True, energy_total_kwh=None))
+            heat_available=heat_available, energy_total_kwh=None))
 
     def aggregate(self, start, solar, house, heat, battery, grid, count):
         self.db.connection.execute("INSERT INTO aggregates_5m VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -45,6 +46,34 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(view["display"]["solar_power_kw"], 6.5)
         self.assertEqual(view["display"]["house_power_kw"], 8.5)
         self.assertEqual(view["display"]["heat_power_kw"], 2.5)
+        self.assertEqual(view["display"]["display_house_power_kw"], 6.0)
+
+    def test_small_house_kpi_subtracts_only_available_heat(self):
+        self.snapshot()
+        self.aggregate(self.now-timedelta(minutes=5), 8, 5, 2, 0, 2, 1)
+        view = build_live_view(self.db, self.now)
+        self.assertEqual(view["display"]["house_power_kw"], 5)
+        self.assertEqual(view["display"]["display_house_power_kw"], 3)
+        self.assertEqual(self.db.latest_snapshot().house_power_kw, 7)
+        svg = render_dashboard(view["display"])
+        self.assertIn(">3.0 kW</text>", svg)
+        self.assertEqual(view["display"]["chart_house_line"].count("M "), 1)
+        self.assertIn(f"{power_y(5):.2f}".rstrip("0").rstrip("."),
+                      view["display"]["chart_house_line"])
+        self.assertEqual(view["display"]["self_consumption_percent"], 75)
+
+        self.db.connection.execute("DELETE FROM aggregates_5m")
+        self.db.connection.commit()
+        self.assertEqual(build_live_view(self.db, self.now)["display"]["display_house_power_kw"], 5)
+
+    def test_small_house_kpi_handles_unavailable_and_excess_heat(self):
+        self.snapshot(heat_available=False)
+        unavailable = build_live_view(self.db, self.now)
+        self.assertEqual(unavailable["display"]["display_house_power_kw"], 7)
+        self.db.connection.execute("DELETE FROM raw_samples")
+        self.snapshot(heat_available=True)
+        self.aggregate(self.now-timedelta(minutes=5), 8, 1, 2, 0, 2, 1)
+        self.assertEqual(build_live_view(self.db, self.now)["display"]["display_house_power_kw"], 0)
 
     def test_old_aggregates_fall_back_to_fresh_raw_snapshot(self):
         self.snapshot()
@@ -61,6 +90,17 @@ class DashboardTest(unittest.TestCase):
         view = build_live_view(self.db, morning)
         self.assertEqual(view["power_source"], "raw_snapshot")
         self.assertEqual(view["display"]["solar_power_kw"], 9)
+
+    def test_self_consumption_uses_power_data_day_while_chart_uses_today(self):
+        now = datetime(2026, 7, 26, 6, 0, tzinfo=timezone.utc)
+        previous_snapshot = datetime(2026, 7, 25, 20, 0, tzinfo=timezone.utc)
+        self.snapshot(previous_snapshot)
+        self.aggregate(previous_snapshot-timedelta(minutes=5), 10, 6, 1, 0, 5, 1)
+        self.aggregate(now-timedelta(minutes=5), 10, 6, 1, 0, 0, 1)
+        view = build_live_view(self.db, now)
+        self.assertEqual(view["display"]["self_consumption_percent"], 50)
+        self.assertEqual(view["chart_status"]["local_day"], "2026-07-26")
+        self.assertEqual(view["chart_status"]["aggregate_count"], 1)
 
     def test_gap_uses_only_newest_recent_bucket(self):
         self.snapshot()
@@ -182,7 +222,25 @@ class DashboardTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "sample.svg"
             self.assertEqual(render_main(["--output", str(output)]), 0)
-            self.assertIn("<svg", output.read_text(encoding="utf-8"))
+            svg = output.read_text(encoding="utf-8")
+            self.assertIn("<svg", svg)
+            self.assertIn('<path d="M 280 276', svg)
+
+    def test_day_yield_formatting(self):
+        for value, expected in ((4.902, "4.9"), (99.4, "99.4"),
+                                (99.96, "100"), (100.0, "100"),
+                                (135.7, "136"), (None, "—")):
+            with self.subTest(value=value):
+                self.assertEqual(format_day_yield(value), expected)
+
+    def test_requested_template_geometry_adjustments_only(self):
+        template = Path("renderer/template/dashboard_template.svg").read_text()
+        for y in (315, 359, 403, 447):
+            self.assertIn(f'<text x="205" y="{y}"', template)
+            self.assertNotIn(f'<text x="202" y="{y}"', template)
+        self.assertIn(">Wärme</text>", template)
+        self.assertIn('<g transform="translate(-5 0)"><circle cx="589"', template)
+        self.assertIn('<line x1="632" y1="443" x2="645" y2="426"', template)
 
 
 class IgnoreFilesTest(unittest.TestCase):

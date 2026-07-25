@@ -125,7 +125,11 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
     sun_age = ((now_utc - sun.fetched_at.astimezone(timezone.utc)).total_seconds()
                if sun else None)
     display = dict(power)
+    displayed_heat = (power["heat_power_kw"]
+                      if snapshot and snapshot.heat_available else 0.0)
     display.update({
+        "display_house_power_kw": (max(0.0, power["house_power_kw"] - displayed_heat)
+                                   if power["house_power_kw"] is not None else None),
         "battery_percent": snapshot.battery_soc_pct if snapshot and snapshot.battery_available else None,
         "battery_available": bool(snapshot and snapshot.battery_available),
         "current_time": local_timestamp.strftime("%H:%M Uhr") if local_timestamp else "—",
@@ -138,7 +142,9 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "co2_savings_kg": co2_savings,
         "story_line_1": story_1, "story_line_2": story_2,
         "day_yield_kwh": day_yield,
-        "self_consumption_percent": _self_consumption(day_aggregates),
+        "self_consumption_percent": _self_consumption(
+            database.aggregates_for_local_day(local_day)
+        ),
         "chart_solar_area": chart.solar_area,
         "chart_solar_line": chart.solar_line,
         "chart_house_line": chart.house_line,
