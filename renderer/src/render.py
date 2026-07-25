@@ -17,6 +17,39 @@ SEGMENT_COUNT = 20
 MISSING = "—"
 
 
+def weather_icon_svg(variant):
+    """Render a bold weather mark at the frozen sunshine-icon position."""
+    variants = {"sunny", "mainly_clear", "partly_cloudy", "overcast", "fog",
+                "rain", "snow", "thunderstorm"}
+    variant = variant if variant in variants else "sunny"
+    sun = ('<circle cx="589" cy="36" r="8" fill="#FFD400" stroke="#000000" stroke-width="1.6"/>'
+           '<path d="M589 19v5 M589 48v5 M572 36h5 M601 36h5 M577 24l4 4 M597 44l4 4 '
+           'M577 48l4-4 M597 28l4-4" fill="none" stroke="#000000" stroke-width="1.6" '
+           'stroke-linecap="round"/>')
+    small_cloud = ('<path d="M584 45 C580 45 578 42 579 39 C580 36 583 35 586 37 '
+                   'C588 32 596 33 597 39 C602 38 604 45 598 45 Z" fill="#FFFFFF" '
+                   'stroke="#000000" stroke-width="1.7" stroke-linejoin="round"/>')
+    large_cloud = ('<path d="M576 46 C571 46 569 42 571 38 C572 35 576 34 579 36 '
+                   'C582 29 593 30 595 38 C602 36 606 46 598 46 Z" fill="#FFFFFF" '
+                   'stroke="#000000" stroke-width="1.8" stroke-linejoin="round"/>')
+    clouds = ('<path d="M574 44 C569 44 568 39 571 36 C574 33 578 34 580 37 '
+              'C582 29 594 30 596 38 C604 36 608 47 598 47 H574 C568 47 568 44 574 44 Z" '
+              'fill="#FFFFFF" stroke="#000000" stroke-width="1.8" stroke-linejoin="round"/>')
+    if variant == "sunny": drawing = sun
+    elif variant == "mainly_clear": drawing = sun + small_cloud
+    elif variant == "partly_cloudy": drawing = sun + large_cloud
+    elif variant == "overcast": drawing = clouds
+    elif variant == "fog":
+        drawing = clouds + '<path d="M572 51h32 M576 56h24" fill="none" stroke="#000000" stroke-width="1.8"/>'
+    elif variant == "rain":
+        drawing = clouds + '<path d="M578 51l-2 5 M588 51l-2 5 M598 51l-2 5" stroke="#0057B8" stroke-width="2"/>'
+    elif variant == "snow":
+        drawing = clouds + '<path d="M578 51v6 M575 54h6 M588 51v6 M585 54h6 M598 51v6 M595 54h6" stroke="#0057B8" stroke-width="1.4"/>'
+    else:
+        drawing = clouds + '<path d="M591 48l-6 8h5l-3 7 10-11h-5l3-4z" fill="#FFD400" stroke="#000000" stroke-width="1.2"/>'
+    return f'<g data-weather-icon="{variant}">{drawing}</g>'
+
+
 def round_half_up(value):
     return int(math.floor(value + 0.5))
 
@@ -146,6 +179,7 @@ def render_dashboard(data, template=None):
         values[f"BATTERY_SEG_{i:02d}_FILL"] = GREEN if i <= battery_segments else WHITE
     rendered = template
     for key, value in {"CHART_SERIES_SVG": chart_svg,
+                       "WEATHER_ICON_SVG": weather_icon_svg(data.get("weather_icon_variant")),
                        "HOUSE_ARROW_SVG": house_arrow_svg, "HEAT_ARROW_SVG": heat_arrow_svg,
                        "BATTERY_ARROW_SVG": battery_arrow_svg, "GRID_ARROW_SVG": grid_arrow_svg}.items():
         rendered = rendered.replace("{{" + key + "}}", value)

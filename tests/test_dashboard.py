@@ -242,7 +242,9 @@ class DashboardTest(unittest.TestCase):
             self.assertIn(f'<text x="205" y="{y}"', template)
             self.assertNotIn(f'<text x="202" y="{y}"', template)
         self.assertIn(">Wärme</text>", template)
-        self.assertIn('<g transform="translate(-9 0)"><circle cx="589"', template)
+        self.assertIn('<g transform="translate(-9 0)">{{WEATHER_ICON_SVG}}', template)
+        self.assertIn('x="22" y="389" width="12" height="19"', template)
+        self.assertIn('x="26" y="387" width="4" height="4"', template)
         self.assertIn('<line x1="632" y1="443" x2="645" y2="426"', template)
         svg = render_dashboard({
             "chart_solar_line": "M 1 1", "chart_house_line": "M 2 2",

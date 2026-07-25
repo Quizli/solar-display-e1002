@@ -24,6 +24,8 @@ class SunData:
     sunset: datetime
     sunshine_hours: float
     fetched_at: datetime
+    weather_code: object = None
+    weather_code_status: str = "missing"
 
     def to_dict(self):
         return {
@@ -32,6 +34,8 @@ class SunData:
             "sunset": self.sunset.isoformat(),
             "sunshine_hours": self.sunshine_hours,
             "fetched_at": self.fetched_at.astimezone(timezone.utc).isoformat(),
+            "weather_code": self.weather_code,
+            "weather_code_status": self.weather_code_status,
         }
 
 
@@ -42,6 +46,13 @@ def _finite_number(value, name):
     if not math.isfinite(value):
         raise SunDataError(f"{name} must be finite")
     return value
+
+
+def _valid_weather_code(value):
+    return (not isinstance(value, bool) and isinstance(value, int) and
+            (0 <= value <= 3 or value in (45, 48) or 51 <= value <= 67 or
+             71 <= value <= 77 or 80 <= value <= 82 or 85 <= value <= 86 or
+             95 <= value <= 99))
 
 
 def validate_coordinates(latitude, longitude):
@@ -100,7 +111,16 @@ def parse_response(payload, fetched_at: datetime, expected_date: date) -> SunDat
         raise SunDataError("sunshine_duration must not be negative")
     if fetched_at.tzinfo is None or fetched_at.utcoffset() is None:
         raise SunDataError("fetched_at must be timezone-aware")
-    return SunData(local_date, sunrise, sunset, duration / 3600.0, fetched_at)
+    weather = daily.get("weather_code")
+    if weather is None:
+        weather_code, weather_status = None, "missing"
+    elif (not isinstance(weather, list) or len(weather) != 1 or
+          not _valid_weather_code(weather[0])):
+        weather_code, weather_status = None, "invalid"
+    else:
+        weather_code, weather_status = weather[0], "valid"
+    return SunData(local_date, sunrise, sunset, duration / 3600.0, fetched_at,
+                   weather_code, weather_status)
 
 
 def fetch_sun_data(latitude, longitude, now: Optional[datetime] = None,
@@ -109,7 +129,7 @@ def fetch_sun_data(latitude, longitude, now: Optional[datetime] = None,
     now = now or datetime.now(timezone.utc)
     expected_date = now.astimezone(ZURICH).date()
     query = urlencode({"latitude": latitude, "longitude": longitude,
-                       "daily": "sunrise,sunset,sunshine_duration",
+                       "daily": "sunrise,sunset,sunshine_duration,weather_code",
                        "timezone": "Europe/Zurich", "forecast_days": 1})
     try:
         with opener(f"{API_URL}?{query}", timeout=timeout) as response:
