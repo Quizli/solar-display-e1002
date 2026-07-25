@@ -11,6 +11,7 @@ WHITE = "#FFFFFF"
 YELLOW = "#FFD400"
 RED = "#E02020"
 GREEN = "#149B24"
+BLUE = "#0057B8"
 SOLAR_MAX_KW = 20.0
 SEGMENT_COUNT = 20
 MISSING = "—"
@@ -58,12 +59,24 @@ def _optional(value, suffix="", decimals=None):
     return f"{value}{suffix}"
 
 
+def format_day_yield(value):
+    if value is None or value == MISSING:
+        return MISSING
+    value = float(value)
+    rounded_tenth = math.floor(value * 10.0 + 0.5) / 10.0
+    if rounded_tenth >= 100.0:
+        return str(round_half_up(value))
+    return f"{rounded_tenth:.1f}"
+
+
 def render_dashboard(data, template=None):
     renderer_dir = Path(__file__).resolve().parent.parent
     template = template or (renderer_dir / "template" / "dashboard_template.svg").read_text(encoding="utf-8")
     solar_power = _number(data, "solar_power_kw")
     battery_percent = _number(data, "battery_percent")
-    house_power = _number(data, "house_power_kw")
+    house_power = _number(data, "display_house_power_kw")
+    if house_power is None and "display_house_power_kw" not in data:
+        house_power = _number(data, "house_power_kw")
     heat_power = _number(data, "heat_power_kw")
     battery_power = _number(data, "battery_power_kw")
     grid_power = _number(data, "grid_power_kw")
@@ -112,16 +125,28 @@ def render_dashboard(data, template=None):
         "GRID_LABEL": grid_label, "GRID_POWER": MISSING if grid_display == MISSING else grid_display + " kW",
         "SUNRISE": data.get("sunrise") or MISSING, "SUNSET": data.get("sunset") or MISSING,
         "STORY_LINE_1": data.get("story_line_1", ""), "STORY_LINE_2": data.get("story_line_2", ""),
-        "DAY_YIELD": _optional(data.get("day_yield_kwh"), decimals=1),
+        "DAY_YIELD": format_day_yield(data.get("day_yield_kwh")),
         "SELF_CONSUMPTION": str(round_half_up(clamp(pct, 0, 100))) if pct is not None else MISSING,
         "SELF_CONSUMPTION_UNIT": "%" if pct is not None else "",
         "CO2_SAVINGS": _optional(data.get("co2_savings_kg"), decimals=1),
     }
+    def chart_path(name, color, width, fill="none"):
+        path = str(data.get(name, ""))
+        if not path:
+            return ""
+        return (f'<path d="{escape(path)}" fill="{fill}" stroke="{color}" '
+                f'stroke-width="{width}" stroke-linejoin="round" stroke-linecap="round"/>')
+
+    chart_svg = chart_path("chart_solar_area", "none", 0, YELLOW)
+    chart_svg += chart_path("chart_solar_line", BLACK, 2.2)
+    chart_svg += chart_path("chart_house_line", BLUE, 2.5)
+    chart_svg += chart_path("chart_battery_line", GREEN, 2.5)
     for i in range(1, SEGMENT_COUNT + 1):
         values[f"SOLAR_SEG_{i:02d}_FILL"] = YELLOW if i <= solar_segments else WHITE
         values[f"BATTERY_SEG_{i:02d}_FILL"] = GREEN if i <= battery_segments else WHITE
     rendered = template
-    for key, value in {"HOUSE_ARROW_SVG": house_arrow_svg, "HEAT_ARROW_SVG": heat_arrow_svg,
+    for key, value in {"CHART_SERIES_SVG": chart_svg,
+                       "HOUSE_ARROW_SVG": house_arrow_svg, "HEAT_ARROW_SVG": heat_arrow_svg,
                        "BATTERY_ARROW_SVG": battery_arrow_svg, "GRID_ARROW_SVG": grid_arrow_svg}.items():
         rendered = rendered.replace("{{" + key + "}}", value)
     for key, value in values.items():
