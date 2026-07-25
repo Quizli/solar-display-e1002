@@ -62,3 +62,48 @@ Fixtures sowie einen ausschließlich lokalen HTTP-Testserver:
 ```bash
 python3 -m unittest discover -v
 ```
+
+## Collector und SQLite
+
+Die nächste, weiterhin renderer-unabhängige Stufe ist:
+
+```text
+FroniusClient -> Adapter/LiveData -> Collector -> SQLite -> 5-Minuten-Daten
+```
+
+Der Collector fragt standardmäßig alle 10 Sekunden ab. `SOLAR_POLL_INTERVAL_SECONDS`
+und `--interval` ändern das Intervall. Fehlerhafte Requests oder ungültige
+Pflichtwerte werden geloggt, nicht als Nullmessung gespeichert, und der nächste
+Zyklus wird trotzdem ausgeführt. Der Loop vermeidet durch monotone Zielzeiten
+eine schleichende Intervallverschiebung und reagiert auf `SIGTERM`/`SIGINT`.
+
+SQLite liegt standardmäßig unter `data/solar.db`; `SOLAR_DB_PATH` oder
+`--db-path` wählen ein persistentes Docker-/NAS-Verzeichnis. `raw_samples`
+enthält die normalisierten Einzelmessungen. `aggregates_5m` enthält idempotente,
+nur nach Bucket-Abschluss erzeugte Fünf-Minuten-Werte: Leistung als Mittelwert,
+SoC und Tagesenergie als letzten Wert sowie Sample-Anzahl und Verfügbarkeit.
+
+Zeitstempel werden kanonisch in UTC gespeichert. Lokale Bucket- und
+Kalendertagslogik verwendet `zoneinfo` mit `Europe/Zurich`, einschließlich DST.
+Rohdaten werden nach standardmäßig sieben Tagen gelöscht
+(`SOLAR_RAW_RETENTION_DAYS`/`--retention-days`), aber ausschließlich, wenn ihr
+Bucket bereits aggregiert ist. Aggregate werden nicht automatisch gelöscht.
+
+Manuelle Befehle (die globale DB-Option steht vor dem Unterbefehl):
+
+```bash
+FRONIUS_BASE_URL=http://fronius-host.example/solar_api/v1/ \
+  SOLAR_DB_PATH=data/solar.db python3 -m collector once
+python3 -m collector --db-path data/solar.db status
+python3 -m collector --db-path data/solar.db aggregate
+FRONIUS_BASE_URL=http://fronius-host.example/solar_api/v1/ python3 -m collector loop
+```
+
+Eine produktive Compose-Aktivierung ist absichtlich noch nicht enthalten, damit
+ein Pull keinen neuen Dauerprozess startet. Für einen späteren Container müssen
+`FRONIUS_BASE_URL` und `SOLAR_DB_PATH` gesetzt und das Elternverzeichnis der DB
+als persistentes Volume eingebunden werden.
+
+Noch offen sind reale Tests von `DAY_ENERGY` tagsüber, einem aktiven Ohmpilot
+und der Batterie nach ihrer Installation. Bis dahin bleiben die bestätigten
+Adapter-Fallbacks unverändert.
