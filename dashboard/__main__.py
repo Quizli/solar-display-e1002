@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import math
 import os
 import signal
 import threading
@@ -14,9 +15,19 @@ from .publisher import publish_view
 
 def _positive(value):
     parsed = float(value)
-    if parsed <= 0:
+    if not math.isfinite(parsed) or parsed <= 0:
         raise argparse.ArgumentTypeError("must be positive")
     return parsed
+
+
+def _sun_coordinates(environment):
+    latitude = environment.get("SOLAR_LAT")
+    longitude = environment.get("SOLAR_LON")
+    latitude_set = bool(latitude)
+    longitude_set = bool(longitude)
+    if latitude_set != longitude_set:
+        raise ValueError("SOLAR_LAT and SOLAR_LON must either both be set or both be empty")
+    return (latitude, longitude) if latitude_set else None
 
 
 def parser():
@@ -46,12 +57,12 @@ def main():
         factor = validate_co2_factor(os.environ.get("CO2_AVOIDED_KG_PER_KWH", "0.128"))
         refresh = _positive(os.environ.get("SUN_DATA_REFRESH_SECONDS", "1800"))
         max_age = _positive(os.environ.get("SUN_DATA_MAX_AGE_SECONDS", "21600"))
-        latitude, longitude = os.environ.get("SOLAR_LAT"), os.environ.get("SOLAR_LON")
+        coordinates = _sun_coordinates(os.environ)
 
         def make_view(database):
             sun_result = None
-            if latitude and longitude:
-                sun_result = get_sun_data(latitude, longitude, args.sun_cache,
+            if coordinates:
+                sun_result = get_sun_data(coordinates[0], coordinates[1], args.sun_cache,
                                           refresh_seconds=refresh, max_age_seconds=max_age)
             return build_live_view(database, stale_seconds=args.stale_seconds,
                                    sun_result=sun_result, co2_factor=factor)

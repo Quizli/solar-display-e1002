@@ -148,6 +148,7 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "sun_data_source": sun_result.source if sun_result else "none",
         "sun_data_fetched_at": sun.fetched_at.isoformat() if sun else None,
         "sun_data_age_seconds": max(0.0, sun_age) if sun_age is not None else None,
+        "sun_data_error": sun_result.error if sun_result else None,
         "co2": {"savings_kg": co2_savings, "factor_kg_per_kwh": factor, "basis": CO2_BASIS},
         "display": display,
     }

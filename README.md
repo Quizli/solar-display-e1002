@@ -195,8 +195,11 @@ abgeleitete Näherung.
 Für den produktiven Abruf müssen `SOLAR_LAT` und `SOLAR_LON` in der lokalen
 `.env` gesetzt werden. Die Vorlage enthält absichtlich keine privaten
 Koordinaten. Standardmäßig wird Open-Meteo höchstens alle 1.800 Sekunden
-abgerufen und die letzte gültige Antwort atomar in `/data/sun-data.json`
-beziehungsweise lokal in `data/sun-data.json` gespeichert. Bei einem
+abgerufen und die letzte gültige Antwort atomar gespeichert. Der lokale
+CLI-Default ist `data/sun-data.json`; Compose setzt für den Publisher explizit
+`SUN_DATA_CACHE_PATH=/data/sun-data.json`. Damit liegt der Docker-Cache im
+bestehenden persistenten Mount `./data:/data` und benötigt kein weiteres
+Volume. Bei einem
 API-Ausfall bleibt ein Cache des heutigen Zürcher Kalendertags bis zu 21.600
 Sekunden nutzbar. Danach erscheinen für alle drei Sonnenwerte neutrale Striche;
 die Veröffentlichung der vorhandenen Solar-KPIs läuft trotzdem weiter.

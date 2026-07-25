@@ -3,9 +3,11 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
+from urllib.error import HTTPError
 
 from sun_data.cache import get_sun_data
-from sun_data.client import SunDataError, parse_response
+from sun_data.client import SunDataError, fetch_sun_data, parse_response, validate_coordinates
 
 
 NOW = datetime(2026, 7, 25, 10, 0, tzinfo=timezone.utc)
@@ -39,6 +41,22 @@ class SunClientTest(unittest.TestCase):
         for duration in (-1, True, float("nan"), float("inf")):
             with self.subTest(duration=duration), self.assertRaises(SunDataError):
                 parse_response(payload(duration), NOW, NOW.date())
+
+    def test_invalid_coordinates_are_rejected(self):
+        for latitude, longitude in ((91, 8), (-91, 8), (47, 181), (47, -181),
+                                    (True, 8), (47, False), (float("nan"), 8),
+                                    (47, float("inf")), (float("-inf"), 8)):
+            with self.subTest(latitude=latitude, longitude=longitude), self.assertRaises(SunDataError):
+                validate_coordinates(latitude, longitude)
+
+    def test_http_error_and_timeout_are_reported(self):
+        failures = (HTTPError("https://example.invalid", 503, "unavailable", {}, None),
+                    TimeoutError("timed out"))
+        for failure in failures:
+            def opener(*args, **kwargs):
+                raise failure
+            with self.subTest(failure=type(failure).__name__), self.assertRaises(SunDataError):
+                fetch_sun_data(47, 8, NOW, opener=opener)
 
 
 class SunCacheTest(unittest.TestCase):
@@ -79,6 +97,14 @@ class SunCacheTest(unittest.TestCase):
         missing = get_sun_data(47, 8, self.path, tomorrow, fetcher=lambda *a, **k: (_ for _ in ()).throw(OSError()))
         self.assertIsNone(missing.data)
         self.assertEqual(missing.status, "missing")
+
+    def test_fresh_api_data_survives_cache_write_failure(self):
+        with patch("sun_data.cache._write_cache", side_effect=PermissionError("read only")):
+            result = get_sun_data(47, 8, self.path, NOW, fetcher=self.fetch)
+        self.assertEqual(result.status, "fresh")
+        self.assertEqual(result.source, "open-meteo")
+        self.assertEqual(result.data.sunshine_hours, 7.6)
+        self.assertIn("cache write failed", result.error)
 
 
 if __name__ == "__main__":

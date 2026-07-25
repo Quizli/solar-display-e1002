@@ -73,9 +73,13 @@ def get_sun_data(latitude, longitude, cache_path="data/sun-data.json", now=None,
         return SunDataResult(cached, "fresh", "cache")
     try:
         fresh = fetcher(latitude, longitude, now=now)
-        _write_cache(cache_path, fresh)
-        return SunDataResult(fresh, "fresh", "open-meteo")
     except Exception as exc:  # External service failure must never stop publishing.
         if valid_day and age <= max_age_seconds:
             return SunDataResult(cached, "cached", "cache", str(exc))
         return SunDataResult(None, "invalid" if cache_invalid else "missing", "none", str(exc))
+    try:
+        _write_cache(cache_path, fresh)
+    except Exception as exc:
+        # A persistence problem must not discard a valid response or block SVG publishing.
+        return SunDataResult(fresh, "fresh", "open-meteo", f"cache write failed: {exc}")
+    return SunDataResult(fresh, "fresh", "open-meteo")
