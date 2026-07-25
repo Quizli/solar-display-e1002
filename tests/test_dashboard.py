@@ -1,10 +1,13 @@
 import json
+import os
+import stat
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dashboard.live_view import build_live_view
+from dashboard.live_view import validate_co2_factor
 from dashboard.publisher import publish_view
 from fronius.model import LiveData
 from renderer.src.render import main as render_main, render_dashboard
@@ -90,6 +93,17 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(view["daily_energy"]["source"], "solar_integration")
         self.assertAlmostEqual(view["display"]["day_yield_kwh"], 10/6)
         self.assertAlmostEqual(view["display"]["self_consumption_percent"], 70)
+        self.assertAlmostEqual(view["display"]["co2_savings_kg"], (10/6) * .128)
+        self.assertAlmostEqual(view["co2"]["factor_kg_per_kwh"], .128)
+
+    def test_co2_missing_zero_negative_and_invalid_factor(self):
+        self.assertIsNone(build_live_view(self.db, self.now)["display"]["co2_savings_kg"])
+        self.snapshot()
+        self.aggregate(self.now-timedelta(minutes=5), 0, 2, 1, 0, -2, 1)
+        self.assertEqual(build_live_view(self.db, self.now)["display"]["co2_savings_kg"], 0)
+        for factor in (-1, float("nan"), float("inf"), "bad", True):
+            with self.subTest(factor=factor), self.assertRaises(ValueError):
+                validate_co2_factor(factor)
 
     def test_zero_production_is_unavailable(self):
         self.snapshot()
@@ -102,6 +116,13 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("Batterie folgt", svg)
         self.assertNotIn("{{", svg)
         self.assertIn("—", svg)
+        self.assertNotIn("—%", svg)
+
+    def test_self_consumption_unit_only_appears_with_number(self):
+        data = {"self_consumption_percent": 42}
+        self.assertIn(">42</tspan><tspan dx=\"6\" font-size=\"14\" font-weight=\"400\">%</tspan>",
+                      render_dashboard(data))
+        self.assertNotIn("—%", render_dashboard({"self_consumption_percent": None}))
 
     def test_fresh_stale_missing_and_zurich_time(self):
         self.assertEqual(build_live_view(self.db, self.now)["freshness"], "missing")
@@ -121,6 +142,10 @@ class DashboardTest(unittest.TestCase):
             output.write_text("old", encoding="utf-8")
             publish_view(build_live_view(self.db, self.now), output)
             self.assertIn("<svg", output.read_text(encoding="utf-8"))
+            mode = stat.S_IMODE(output.stat().st_mode)
+            self.assertEqual(mode, 0o644)
+            self.assertTrue(mode & stat.S_IROTH, "Nginx must be able to read the published SVG")
+            self.assertTrue(os.access(output, os.R_OK))
             old = output.read_text(encoding="utf-8")
             with self.assertRaises(ValueError):
                 publish_view(build_live_view(SolarDatabase(":memory:"), self.now), output)

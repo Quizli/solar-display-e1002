@@ -33,6 +33,9 @@ def publish_view(view, output_path):
             handle.flush()
             os.fsync(handle.fileno())
         validate_svg(temporary.read_text(encoding="utf-8"))
+        # NamedTemporaryFile starts at 0600.  Keep the atomic replacement while
+        # making the resulting bind-mounted file readable by the Nginx service.
+        os.chmod(temporary, 0o644)
         os.replace(str(temporary), str(output))
     except Exception:
         if temporary is not None:

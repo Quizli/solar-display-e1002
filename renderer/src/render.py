@@ -114,6 +114,7 @@ def render_dashboard(data, template=None):
         "STORY_LINE_1": data.get("story_line_1", ""), "STORY_LINE_2": data.get("story_line_2", ""),
         "DAY_YIELD": _optional(data.get("day_yield_kwh"), decimals=1),
         "SELF_CONSUMPTION": str(round_half_up(clamp(pct, 0, 100))) if pct is not None else MISSING,
+        "SELF_CONSUMPTION_UNIT": "%" if pct is not None else "",
         "CO2_SAVINGS": _optional(data.get("co2_savings_kg"), decimals=1),
     }
     for i in range(1, SEGMENT_COUNT + 1):
