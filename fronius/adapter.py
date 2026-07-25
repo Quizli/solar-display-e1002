@@ -55,16 +55,64 @@ def _day_energy(payload: Optional[Mapping[str, Any]]) -> float:
     return total_wh / 1000.0
 
 
+def _non_negative_energy(value: Any) -> Optional[float]:
+    """Return a valid cumulative Wh value, otherwise mark it unavailable."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    result = float(value)
+    if not math.isfinite(result) or result < 0:
+        return None
+    return result
+
+
+def _total_energy(power_flow: Mapping[str, Any]) -> Optional[float]:
+    data = _body(power_flow, "PowerFlow")
+    site = data.get("Site")
+    if isinstance(site, Mapping):
+        site_total = _non_negative_energy(site.get("E_Total"))
+        if site_total is not None:
+            return site_total / 1000.0
+
+    inverters = data.get("Inverters")
+    if not isinstance(inverters, Mapping):
+        return None
+    totals = []
+    for inverter in inverters.values():
+        if isinstance(inverter, Mapping):
+            total = _non_negative_energy(inverter.get("E_Total"))
+            if total is not None:
+                totals.append(total)
+    return sum(totals) / 1000.0 if totals else None
+
+
 def _battery(_: Optional[Mapping[str, Any]]) -> Tuple[bool, float, float]:
     # No real storage field names or power direction have been verified yet.
     # Keeping this mapping isolated makes the future sign conversion local.
     return False, 0.0, 0.0
 
 
-def _heat(_: Optional[Mapping[str, Any]]) -> Tuple[bool, float]:
-    # The installed Ohmpilot currently returns {}. Its live power field must be
-    # verified before a value can safely be mapped here.
-    return False, 0.0
+def _heat(payload: Optional[Mapping[str, Any]]) -> Tuple[bool, float]:
+    """Sum confirmed, optional Ohmpilot real-power values."""
+    if payload is None:
+        return False, 0.0
+    body = payload.get("Body")
+    data = body.get("Data") if isinstance(body, Mapping) else None
+    if not isinstance(data, Mapping):
+        return False, 0.0
+
+    powers = []
+    for device in data.values():
+        value = (
+            device.get("PowerReal_PAC_Sum")
+            if isinstance(device, Mapping)
+            else None
+        )
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        power_w = float(value)
+        if math.isfinite(power_w) and power_w >= 0:
+            powers.append(power_w)
+    return (True, sum(powers) / 1000.0) if powers else (False, 0.0)
 
 
 def normalize_live_data(
@@ -94,6 +142,7 @@ def normalize_live_data(
         battery_power_kw=battery_power,
         grid_power_kw=-grid_w / 1000.0,
         energy_today_kwh=_day_energy(inverter_realtime),
+        energy_total_kwh=_total_energy(power_flow),
         battery_available=battery_available,
         heat_available=heat_available,
     )

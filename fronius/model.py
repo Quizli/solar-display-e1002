@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 @dataclass(frozen=True)
@@ -14,6 +14,7 @@ class LiveData:
     battery_power_kw: float
     grid_power_kw: float
     energy_today_kwh: float
+    energy_total_kwh: Optional[float]
     battery_available: bool
     heat_available: bool
 

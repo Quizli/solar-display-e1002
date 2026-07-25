@@ -25,14 +25,32 @@ API-Fehler nicht als echter Null-Snapshot erscheint.
 
 Storage und Ohmpilot sind optional. Fehlende Antworten, `null` oder leere
 `Data`-Objekte ergeben sichere Nullwerte mit `battery_available=false` bzw.
-`heat_available=false`. Die realen Storage-Felder, deren Leistungsrichtung und
-das reale Ohmpilot-Leistungsfeld sind noch nicht bestätigt. Sie werden deshalb
-nicht geraten; ihre spätere Abbildung ist in getrennten Adapterfunktionen
+`heat_available=false`. Für Ohmpilot ist `PowerReal_PAC_Sum` inzwischen als
+Leistung in Watt bestätigt; gültige Werte aller Geräte werden summiert und als
+`heat_power_kw` ausgewiesen. Diese Leistung ist bereits in `-P_Load` und damit
+in `house_power_kw` enthalten: Sie wird weder davon abgezogen noch zusätzlich
+zum Hausverbrauch addiert. Die realen Storage-Felder und deren Leistungsrichtung
+sind noch nicht bestätigt und bleiben in einer getrennten Adapterfunktion
 gekapselt.
 
 Smart-Meter-Daten sind explizit über `FroniusClient.get_meter_realtime_data()`
 abrufbar. Weil sie für das aktuelle Modell nicht benötigt werden, verursacht
 ein normaler Live-Snapshot keinen zusätzlichen Meter-Request.
+
+### Installation
+
+Vor Tests oder manueller Ausführung werden die wenigen Laufzeitabhängigkeiten
+installiert:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+Python 3.9 und neuer verwenden `zoneinfo` aus der Standardbibliothek. Unter
+Python 3.8 wird automatisch `backports.zoneinfo` verwendet; `tzdata` stellt die
+IANA-Zeitzonendaten auch in reduzierten Python-/Docker-Umgebungen bereit. Die
+fachliche Zeitzone bleibt `Europe/Zurich`. Kanonische UTC-Speicherung und
+DST-Logik sind auf beiden Python-Varianten identisch.
 
 ### Manuellen Snapshot abrufen
 
@@ -62,3 +80,72 @@ Fixtures sowie einen ausschließlich lokalen HTTP-Testserver:
 ```bash
 python3 -m unittest discover -v
 ```
+
+## Collector und SQLite
+
+Die nächste, weiterhin renderer-unabhängige Stufe ist:
+
+```text
+FroniusClient -> Adapter/LiveData -> Collector -> SQLite -> 5-Minuten-Daten
+```
+
+Der Collector fragt standardmäßig alle 10 Sekunden ab. `SOLAR_POLL_INTERVAL_SECONDS`
+und `--interval` ändern das Intervall. Fehlerhafte Requests oder ungültige
+Pflichtwerte werden geloggt, nicht als Nullmessung gespeichert, und der nächste
+Zyklus wird trotzdem ausgeführt. Der Loop vermeidet durch monotone Zielzeiten
+eine schleichende Intervallverschiebung und reagiert auf `SIGTERM`/`SIGINT`.
+
+SQLite liegt standardmäßig unter `data/solar.db`; `SOLAR_DB_PATH` oder
+`--db-path` wählen ein persistentes Docker-/NAS-Verzeichnis. `raw_samples`
+enthält die normalisierten Einzelmessungen einschließlich des kumulierten
+`energy_total_kwh`-Zählers. `aggregates_5m` enthält idempotente,
+nur nach Bucket-Abschluss erzeugte Fünf-Minuten-Werte: Leistung als Mittelwert,
+SoC und Tagesenergie als letzten Wert sowie Sample-Anzahl und Verfügbarkeit.
+
+Zeitstempel werden kanonisch in UTC gespeichert. Lokale Bucket- und
+Kalendertagslogik verwendet `zoneinfo` mit `Europe/Zurich`, einschließlich DST.
+Rohdaten werden nach standardmäßig sieben Tagen gelöscht
+(`SOLAR_RAW_RETENTION_DAYS`/`--retention-days`), aber ausschließlich, wenn ihr
+Bucket bereits aggregiert und vollständig vor dem Retention-Cutoff abgeschlossen
+ist. Buckets werden dabei immer vollständig statt sampleweise gelöscht.
+Unveränderte Buckets werden nicht erneut aggregiert; neue verspätete Samples
+werden über einen geänderten `sample_count` erkannt. Aggregate werden nicht
+automatisch gelöscht.
+
+Da `DAY_ENERGY` auf der realen Anlage auch bei laufender Produktion `null` sein
+kann, ist dieser API-Wert nicht die einzige Quelle für den Dashboard-Tagesertrag.
+`energy_total_kwh` stammt bevorzugt aus `Site.E_Total`, ersatzweise aus der
+Summe gültiger `Inverters.*.E_Total`-Werte. Der Tagesertrag wird aus letztem
+Tageszähler minus letztem Zähler vor der lokalen Tagesgrenze berechnet. Fehlt
+der vorherige Wert, kann der früheste Tageswert eine als unvollständig markierte
+Baseline bilden. Bei fehlender Baseline oder einem Zählerrücksprung werden die
+vorhandenen 5-Minuten-Mittelwerte der PV-Leistung über ihre tatsächliche Dauer
+integriert; negative Tageserträge werden nie ausgegeben.
+
+Manuelle Befehle (die globale DB-Option steht vor dem Unterbefehl):
+
+```bash
+FRONIUS_BASE_URL=http://fronius-host.example/solar_api/v1/ \
+  SOLAR_DB_PATH=data/solar.db python3 -m collector once
+python3 -m collector --db-path data/solar.db status
+python3 -m collector --db-path data/solar.db aggregate
+FRONIUS_BASE_URL=http://fronius-host.example/solar_api/v1/ python3 -m collector loop
+```
+
+Eine produktive Compose-Aktivierung ist absichtlich noch nicht enthalten, damit
+ein Pull keinen neuen Dauerprozess startet. Für einen späteren Container müssen
+`FRONIUS_BASE_URL` und `SOLAR_DB_PATH` gesetzt und das Elternverzeichnis der DB
+als persistentes Volume eingebunden werden.
+
+Für eine lokale Konfiguration kann die sichere Vorlage kopiert werden:
+
+```bash
+cp .env.example .env
+```
+
+`.env` bleibt ausschließlich lokal und wird durch `.gitignore` nicht committed.
+Die Vorlage enthält keine Zugangsdaten. Echte API-Keys und andere Secrets gehören
+niemals nach GitHub, in den Code, in PR-Beschreibungen oder in die Dokumentation.
+
+Noch offen sind reale Tests von `DAY_ENERGY` tagsüber und der Batterie nach ihrer
+Installation. Bis dahin bleiben die bestätigten Adapter-Fallbacks unverändert.
