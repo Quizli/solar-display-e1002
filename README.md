@@ -132,10 +132,9 @@ python3 -m collector --db-path data/solar.db aggregate
 FRONIUS_BASE_URL=http://fronius-host.example/solar_api/v1/ python3 -m collector loop
 ```
 
-Eine produktive Compose-Aktivierung ist absichtlich noch nicht enthalten, damit
-ein Pull keinen neuen Dauerprozess startet. Für einen späteren Container müssen
-`FRONIUS_BASE_URL` und `SOLAR_DB_PATH` gesetzt und das Elternverzeichnis der DB
-als persistentes Volume eingebunden werden.
+Der produktive Compose-Betrieb startet Collector, Publisher und Webserver als
+getrennte Dienste. `FRONIUS_BASE_URL` wird lokal über `.env` gesetzt; der
+Containerpfad der persistenten Datenbank ist fest `/data/solar.db`.
 
 Für eine lokale Konfiguration kann die sichere Vorlage kopiert werden:
 
@@ -149,3 +148,82 @@ niemals nach GitHub, in den Code, in PR-Beschreibungen oder in die Dokumentation
 
 Noch offen sind reale Tests von `DAY_ENERGY` tagsüber und der Batterie nach ihrer
 Installation. Bis dahin bleiben die bestätigten Adapter-Fallbacks unverändert.
+
+## Live-Dashboard-Publisher
+
+Die produktive Datenstrecke ist jetzt vollständig entkoppelt:
+
+```text
+Fronius -> Collector -> SQLite -> Dashboard-Publisher -> publish/dashboard.svg -> Nginx -> E1002
+```
+
+Der Collector speichert weiterhin typischerweise alle zehn Sekunden. Das davon
+unabhängige Display-Intervall beträgt standardmäßig fünf Minuten. Für Solar-,
+Haus-, Ohmpilot-, Batterie- und Netzleistung verwendet der Publisher nur einen
+abgeschlossenen neuesten 5-Minuten-Bucket, dessen Ende gegenüber dem letzten
+Raw-Snapshot höchstens zehn Minuten alt ist. Ein zweiter, nach `sample_count`
+gewichteter Bucket wird ausschließlich bei direkter zeitlicher Nachbarschaft
+verwendet. Bei alten Buckets oder einer Datenlücke erfolgt der Fallback auf den
+einzelnen aktuellen Bucket beziehungsweise den letzten gültigen Raw-Snapshot.
+Der Hauswert enthält die Ohmpilot-Leistung
+bereits. Der Tagesertrag kommt ausschließlich aus `SolarDatabase.daily_energy()`;
+der Eigenverbrauch wird aus den Tagesaggregaten integriert.
+
+Lokale Befehle verwenden standardmäßig `data/solar.db` und
+`publish/dashboard.svg`:
+
+```bash
+python3 -m dashboard once
+python3 -m dashboard status
+python3 -m dashboard loop
+```
+
+`status` schreibt nur das abgeleitete JSON-Modell. `once` publiziert atomar;
+bei fehlenden Daten oder einem Renderfehler bleibt das letzte gute SVG erhalten.
+`SOLAR_DB_PATH`, `DASHBOARD_OUTPUT_PATH`, `DASHBOARD_REFRESH_SECONDS` und
+`DASHBOARD_STALE_SECONDS` überschreiben die Defaults.
+
+Für Docker wird `SOLAR_DB_PATH` im Compose-File bewusst auf `/data/solar.db`
+gesetzt, während `.env.example` den lokalen Pfad dokumentiert. `./data` und
+`./publish` sind persistente Bind-Mounts. Nach dem Kopieren und Ausfüllen der
+sicheren `.env`-Vorlage startet der Dauerbetrieb mit:
+
+```bash
+docker compose up -d --build
+```
+
+Das Dashboard ist anschließend unter
+`http://<NAS-IP>:8088/dashboard.svg` erreichbar. Diagnose:
+
+```bash
+docker compose logs -f collector dashboard-publisher
+docker compose exec dashboard-publisher python3 -m dashboard status
+```
+
+Wetter, Vorhersage, Sonnenzeiten, Charts, CO₂-Berechnung, wechselnde Facts und
+eine direkte E1002-Upload-API sind bewusst nicht Teil dieser Etappe. Bis dahin
+zeigt das eingefrorene Layout neutrale Striche und einen festen Live-Hinweis.
+
+### Docker-Build-Kontext und Dateirechte
+
+`.gitignore` verhindert, dass lokale Konfiguration und Laufzeitdaten versehentlich
+in Git aufgenommen werden. Zusätzlich schützt `.dockerignore` den Build-Kontext
+bei `COPY . .`: Insbesondere `.env`, SQLite-Dateien, `data/`, `publish/` und
+Renderer-Ausgaben werden nicht an den Docker-Daemon übertragen und nicht ins
+Image kopiert. Die Anwendung benötigt keine `.env` im Image. Compose verwendet
+die lokale Datei ausschließlich zur Variablensubstitution und gibt jedem Dienst
+nur seine benötigten Variablen weiter; Wettervariablen werden keinem Container
+übergeben. `.env` darf weder committed noch in ein Image kopiert werden.
+
+Collector und Publisher laufen nicht als root. Vor dem ersten Start werden die
+lokalen IDs ermittelt:
+
+```bash
+id -u
+id -g
+```
+
+Die Ergebnisse werden lokal als `SOLAR_UID` und `SOLAR_GID` in `.env`
+eingetragen. Die Host-Verzeichnisse `./data` und `./publish` müssen für diesen
+Benutzer beziehungsweise diese Gruppe schreibbar sein. Es werden bewusst keine
+realen NAS- oder Benutzer-IDs im Repository vorgegeben.

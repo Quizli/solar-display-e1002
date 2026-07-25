@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 import json
 import math
@@ -5,168 +6,144 @@ import re
 import sys
 from xml.sax.saxutils import escape
 
-
 BLACK = "#000000"
 WHITE = "#FFFFFF"
 YELLOW = "#FFD400"
 RED = "#E02020"
 GREEN = "#149B24"
-
 SOLAR_MAX_KW = 20.0
 SEGMENT_COUNT = 20
+MISSING = "—"
 
 
-def round_half_up(value: float) -> int:
-    """Round positive values conventionally: 13.5 -> 14."""
+def round_half_up(value):
     return int(math.floor(value + 0.5))
 
 
-def clamp(value: float, minimum: float, maximum: float) -> float:
+def clamp(value, minimum, maximum):
     return max(minimum, min(value, maximum))
 
 
-def format_1(value: float) -> str:
+def format_1(value):
     return f"{value:.1f}"
 
 
-def segment_count(value: float, maximum: float) -> int:
+def segment_count(value, maximum):
     value = clamp(value, 0.0, maximum)
-    scaled = (value / maximum) * SEGMENT_COUNT
-    return max(0, min(SEGMENT_COUNT, round_half_up(scaled)))
+    return max(0, min(SEGMENT_COUNT, round_half_up((value / maximum) * SEGMENT_COUNT)))
 
 
-def down_arrow(y_top: int, color: str) -> str:
-    return (
-        f'<polygon points="218,{y_top} 222,{y_top} '
-        f'222,{y_top + 9} 226,{y_top + 9} '
-        f'220,{y_top + 16} 214,{y_top + 9} 218,{y_top + 9}" '
-        f'fill="{color}"/>'
-    )
+def down_arrow(y_top, color):
+    return (f'<polygon points="218,{y_top} 222,{y_top} 222,{y_top + 9} 226,{y_top + 9} '
+            f'220,{y_top + 16} 214,{y_top + 9} 218,{y_top + 9}" fill="{color}"/>')
 
 
-def up_arrow(y_top: int, color: str) -> str:
-    return (
-        f'<polygon points="218,{y_top + 16} 222,{y_top + 16} '
-        f'222,{y_top + 7} 226,{y_top + 7} '
-        f'220,{y_top} 214,{y_top + 7} 218,{y_top + 7}" '
-        f'fill="{color}"/>'
-    )
+def up_arrow(y_top, color):
+    return (f'<polygon points="218,{y_top + 16} 222,{y_top + 16} 222,{y_top + 7} 226,{y_top + 7} '
+            f'220,{y_top} 214,{y_top + 7} 218,{y_top + 7}" fill="{color}"/>')
 
 
-def main() -> None:
+def _number(data, name):
+    value = data.get(name)
+    if value is None or value == MISSING:
+        return None
+    return float(value)
+
+
+def _optional(value, suffix="", decimals=None):
+    if value is None or value == MISSING:
+        return MISSING
+    if decimals is not None:
+        return f"{float(value):.{decimals}f}{suffix}"
+    return f"{value}{suffix}"
+
+
+def render_dashboard(data, template=None):
     renderer_dir = Path(__file__).resolve().parent.parent
-    template_path = renderer_dir / "template" / "dashboard_template.svg"
-    data_path = renderer_dir / "data" / "sample_data.json"
-    output_dir = renderer_dir / "output"
-    output_path = output_dir / "dashboard.svg"
+    template = template or (renderer_dir / "template" / "dashboard_template.svg").read_text(encoding="utf-8")
+    solar_power = _number(data, "solar_power_kw")
+    battery_percent = _number(data, "battery_percent")
+    house_power = _number(data, "house_power_kw")
+    heat_power = _number(data, "heat_power_kw")
+    battery_power = _number(data, "battery_power_kw")
+    grid_power = _number(data, "grid_power_kw")
+    battery_available = bool(data.get("battery_available", True))
 
-    template = template_path.read_text(encoding="utf-8")
-    data = json.loads(data_path.read_text(encoding="utf-8"))
+    def consumer(value, y):
+        if value is None:
+            return MISSING, ""
+        if abs(value) < .05:
+            return "0.0", ""
+        return format_1(abs(value)), down_arrow(y, RED)
 
-    # Raw numeric values
-    solar_power = float(data["solar_power_kw"])
-    battery_percent = float(data["battery_percent"])
-    house_power = float(data["house_power_kw"])
-    heat_power = float(data["heat_power_kw"])
-    battery_power = float(data["battery_power_kw"])
-    grid_power = float(data["grid_power_kw"])
-
-    # Display semantics:
-    # House / heat rows: if near zero, show 0.0 and no arrow
-    if abs(house_power) < 0.05:
-        house_display = 0.0
-        house_arrow_svg = ""
+    house_display, house_arrow_svg = consumer(house_power, 303)
+    heat_display, heat_arrow_svg = consumer(heat_power, 347)
+    if not battery_available:
+        battery_label, battery_arrow_svg, battery_flow = "Batterie folgt", "", MISSING
+    elif battery_power is None:
+        battery_label, battery_arrow_svg, battery_flow = "Batterie", "", MISSING
+    elif battery_power > .05:
+        battery_label, battery_arrow_svg, battery_flow = "Batterieladung", down_arrow(391, RED), format_1(abs(battery_power))
+    elif battery_power < -.05:
+        battery_label, battery_arrow_svg, battery_flow = "Batteriebezug", up_arrow(391, GREEN), format_1(abs(battery_power))
     else:
-        house_display = abs(house_power)
-        house_arrow_svg = down_arrow(303, RED)
+        battery_label, battery_arrow_svg, battery_flow = "Batterie", "", "0.0"
 
-    if abs(heat_power) < 0.05:
-        heat_display = 0.0
-        heat_arrow_svg = ""
+    if grid_power is None:
+        grid_label, grid_arrow_svg, grid_display = "Netz", "", MISSING
+    elif grid_power > .05:
+        grid_label, grid_arrow_svg, grid_display = "Einspeisung", down_arrow(435, GREEN), format_1(abs(grid_power))
+    elif grid_power < -.05:
+        grid_label, grid_arrow_svg, grid_display = "Netzbezug", up_arrow(435, RED), format_1(abs(grid_power))
     else:
-        heat_display = abs(heat_power)
-        heat_arrow_svg = down_arrow(347, RED)
+        grid_label, grid_arrow_svg, grid_display = "Netz", "", "0.0"
 
-    # battery_power > 0 = charging, < 0 = discharging / battery supply
-    if battery_power > 0.05:
-        battery_label = "Batterieladung"
-        battery_arrow_svg = down_arrow(391, RED)
-    elif battery_power < -0.05:
-        battery_label = "Batteriebezug"
-        battery_arrow_svg = up_arrow(391, GREEN)
-    else:
-        battery_label = "Batterie"
-        battery_arrow_svg = ""
-
-    # grid_power > 0 = export, < 0 = import
-    if grid_power > 0.05:
-        grid_label = "Einspeisung"
-        grid_arrow_svg = down_arrow(435, GREEN)
-    elif grid_power < -0.05:
-        grid_label = "Netzbezug"
-        grid_arrow_svg = up_arrow(435, RED)
-    else:
-        grid_label = "Netz"
-        grid_arrow_svg = ""
-
-    # Dynamic segmented bars
-    solar_segments = segment_count(solar_power, SOLAR_MAX_KW)
-    battery_segments = segment_count(battery_percent, 100.0)
-
+    solar_segments = segment_count(solar_power or 0, SOLAR_MAX_KW)
+    battery_segments = segment_count(battery_percent or 0, 100) if battery_available else 0
+    pct = _number(data, "self_consumption_percent")
     values = {
-        "SOLAR_POWER": format_1(max(0.0, solar_power)),
-        "CURRENT_TIME": str(data["current_time"]),
-        "DATE_TEXT": str(data["date_text"]),
-        "SUN_HOURS": f'{float(data["sun_hours"]):.1f} h',
-        "BATTERY_PERCENT": str(round_half_up(clamp(battery_percent, 0.0, 100.0))),
-        "HOUSE_POWER": f"{format_1(house_display)} kW",
-        "HEAT_POWER": f"{format_1(heat_display)} kW",
-        "BATTERY_FLOW_LABEL": battery_label,
-        "BATTERY_FLOW_POWER": f"{format_1(abs(battery_power))} kW",
-        "GRID_LABEL": grid_label,
-        "GRID_POWER": f"{format_1(abs(grid_power))} kW",
-        "SUNRISE": str(data["sunrise"]),
-        "SUNSET": str(data["sunset"]),
-        "STORY_LINE_1": str(data["story_line_1"]),
-        "STORY_LINE_2": str(data["story_line_2"]),
-        "DAY_YIELD": format_1(float(data["day_yield_kwh"])),
-        "SELF_CONSUMPTION": str(round_half_up(clamp(float(data["self_consumption_percent"]), 0.0, 100.0))),
-        "CO2_SAVINGS": format_1(max(0.0, float(data["co2_savings_kg"]))),
+        "SOLAR_POWER": format_1(max(0, solar_power)) if solar_power is not None else MISSING,
+        "CURRENT_TIME": data.get("current_time", MISSING), "DATE_TEXT": data.get("date_text", MISSING),
+        "SUN_HOURS": _optional(data.get("sun_hours"), " h", 1),
+        "BATTERY_PERCENT": str(round_half_up(clamp(battery_percent, 0, 100))) if battery_available and battery_percent is not None else MISSING,
+        "HOUSE_POWER": MISSING if house_display == MISSING else house_display + " kW",
+        "HEAT_POWER": MISSING if heat_display == MISSING else heat_display + " kW",
+        "BATTERY_FLOW_LABEL": battery_label, "BATTERY_FLOW_POWER": MISSING if battery_flow == MISSING else battery_flow + " kW",
+        "GRID_LABEL": grid_label, "GRID_POWER": MISSING if grid_display == MISSING else grid_display + " kW",
+        "SUNRISE": data.get("sunrise") or MISSING, "SUNSET": data.get("sunset") or MISSING,
+        "STORY_LINE_1": data.get("story_line_1", ""), "STORY_LINE_2": data.get("story_line_2", ""),
+        "DAY_YIELD": _optional(data.get("day_yield_kwh"), decimals=1),
+        "SELF_CONSUMPTION": str(round_half_up(clamp(pct, 0, 100))) if pct is not None else MISSING,
+        "CO2_SAVINGS": _optional(data.get("co2_savings_kg"), decimals=1),
     }
-
-    # Segment fill placeholders
     for i in range(1, SEGMENT_COUNT + 1):
         values[f"SOLAR_SEG_{i:02d}_FILL"] = YELLOW if i <= solar_segments else WHITE
         values[f"BATTERY_SEG_{i:02d}_FILL"] = GREEN if i <= battery_segments else WHITE
-
     rendered = template
-
-    # Raw SVG fragments first; intentionally not XML-escaped.
-    rendered = rendered.replace("{{HOUSE_ARROW_SVG}}", house_arrow_svg)
-    rendered = rendered.replace("{{HEAT_ARROW_SVG}}", heat_arrow_svg)
-    rendered = rendered.replace("{{BATTERY_ARROW_SVG}}", battery_arrow_svg)
-    rendered = rendered.replace("{{GRID_ARROW_SVG}}", grid_arrow_svg)
-
-    # Normal text / attribute placeholders are escaped.
+    for key, value in {"HOUSE_ARROW_SVG": house_arrow_svg, "HEAT_ARROW_SVG": heat_arrow_svg,
+                       "BATTERY_ARROW_SVG": battery_arrow_svg, "GRID_ARROW_SVG": grid_arrow_svg}.items():
+        rendered = rendered.replace("{{" + key + "}}", value)
     for key, value in values.items():
-        rendered = rendered.replace(f"{{{{{key}}}}}", escape(str(value)))
-
+        rendered = rendered.replace("{{" + key + "}}", escape(str(value)))
     unresolved = sorted(set(re.findall(r"\{\{[A-Z0-9_]+\}\}", rendered)))
     if unresolved:
-        print("Error: Unresolved placeholders found:", file=sys.stderr)
-        for item in unresolved:
-            print(f"  - {item}", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError("Unresolved placeholders: " + ", ".join(unresolved))
+    return rendered
 
-    output_dir.mkdir(exist_ok=True)
-    output_path.write_text(rendered, encoding="utf-8")
 
-    print(f"Solar segments:   {solar_segments}/20")
-    print(f"Battery segments: {battery_segments}/20")
-    print(f"Battery state:    {battery_label}")
-    print(f"Grid state:       {grid_label}")
-    print(f"Generated:        {output_path}")
+def main(argv=None):
+    renderer_dir = Path(__file__).resolve().parent.parent
+    parser = argparse.ArgumentParser(description="Render the frozen SVG dashboard")
+    parser.add_argument("--data", type=Path, default=renderer_dir / "data" / "sample_data.json")
+    parser.add_argument("--output", type=Path, default=renderer_dir / "output" / "dashboard.svg")
+    args = parser.parse_args(argv)
+    data = json.loads(args.data.read_text(encoding="utf-8"))
+    rendered = render_dashboard(data)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(rendered, encoding="utf-8")
+    print(f"Generated:        {args.output}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,0 +1,1 @@
+"""Frozen SVG renderer."""

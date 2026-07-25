@@ -252,6 +252,24 @@ class SolarDatabase:
             )
         return cursor.rowcount
 
+    def latest_aggregates(self, limit: int = 2) -> List[Aggregate5m]:
+        """Return the newest persisted, completed five-minute aggregates oldest first."""
+        if limit <= 0:
+            return []
+        rows = self.connection.execute(
+            "SELECT * FROM aggregates_5m ORDER BY bucket_start_utc DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [Aggregate5m(
+            bucket_start=row["bucket_start_utc"],
+            **{field: row[field] for field in POWER_FIELDS},
+            battery_soc_pct=row["battery_soc_pct"],
+            energy_today_kwh=row["energy_today_kwh"],
+            sample_count=row["sample_count"],
+            battery_available=bool(row["battery_available"]),
+            heat_available=bool(row["heat_available"]),
+        ) for row in reversed(rows)]
+
     def aggregates_for_local_day(self, local_day: date) -> List[Aggregate5m]:
         start = datetime.combine(local_day, datetime.min.time(), tzinfo=ZURICH)
         end = datetime.combine(local_day + timedelta(days=1), datetime.min.time(), tzinfo=ZURICH)
