@@ -43,12 +43,19 @@ class StorageTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.database.store_snapshot(snapshot("2026-07-25T00:00:00"))
 
+    def test_rejects_invalid_total_energy_at_storage_boundary(self):
+        for total in (-1, float("nan"), float("inf")):
+            with self.subTest(total=total), self.assertRaises(ValueError):
+                self.database.store_snapshot(
+                    snapshot("2026-07-25T00:00:00+00:00", total=total)
+                )
+
     def test_completed_bucket_means_and_last_values_and_idempotency(self):
         self.database.store_snapshot(snapshot("2026-07-25T10:01:00+02:00", 1, 20, 5))
         self.database.store_snapshot(snapshot("2026-07-25T10:01:10+02:00", 3, 80, 9))
         now = datetime(2026, 7, 25, 8, 5, tzinfo=UTC)
         self.assertEqual(self.database.aggregate_completed(now), 1)
-        self.assertEqual(self.database.aggregate_completed(now), 1)
+        self.assertEqual(self.database.aggregate_completed(now), 0)
         rows = self.database.aggregates_for_local_day(date(2026, 7, 25))
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].solar_power_kw, 2)
@@ -58,6 +65,21 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(rows[0].energy_today_kwh, 9)
         count = self.database.connection.execute("SELECT count(*) FROM aggregates_5m").fetchone()[0]
         self.assertEqual(count, 1)
+
+    def test_late_sample_reaggregates_only_its_changed_bucket(self):
+        now = datetime(2026, 7, 25, 8, 10, tzinfo=UTC)
+        self.database.store_snapshot(snapshot("2026-07-25T10:01:00+02:00", value=1))
+        self.database.store_snapshot(snapshot("2026-07-25T10:06:00+02:00", value=9))
+        self.assertEqual(self.database.aggregate_completed(now), 2)
+
+        self.database.store_snapshot(snapshot("2026-07-25T10:01:30+02:00", value=5))
+        self.assertEqual(self.database.aggregate_completed(now), 1)
+        rows = self.database.aggregates_for_local_day(date(2026, 7, 25))
+        self.assertEqual(rows[0].sample_count, 2)
+        self.assertEqual(rows[0].solar_power_kw, 3)
+        self.assertEqual(rows[1].sample_count, 1)
+        self.assertEqual(rows[1].solar_power_kw, 9)
+        self.assertEqual(self.database.aggregate_completed(now), 0)
 
     def test_current_bucket_is_not_aggregated(self):
         self.database.store_snapshot(snapshot("2026-07-25T10:04:59+02:00"))
@@ -82,6 +104,31 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(self.database.delete_expired_raw(7, now), 0)
         self.database.aggregate_completed(now)
         self.assertEqual(self.database.delete_expired_raw(7, now), 1)
+
+    def test_retention_never_partially_deletes_a_bucket(self):
+        for timestamp in ("2026-01-03T10:00:30+00:00", "2026-01-03T10:03:30+00:00"):
+            self.database.store_snapshot(snapshot(timestamp))
+        self.database.aggregate_completed(datetime(2026, 1, 3, 10, 5, tzinfo=UTC))
+
+        # With zero retention, 10:02 lies inside the 10:00 bucket.
+        cutoff_inside = datetime(2026, 1, 3, 10, 2, tzinfo=UTC)
+        self.assertEqual(self.database.delete_expired_raw(0, cutoff_inside), 0)
+        raw_count = self.database.connection.execute(
+            "SELECT COUNT(*) FROM raw_samples"
+        ).fetchone()[0]
+        self.assertEqual(raw_count, 2)
+        self.assertEqual(self.database.aggregate_completed(cutoff_inside), 0)
+
+        aggregate_before = self.database.connection.execute(
+            "SELECT * FROM aggregates_5m"
+        ).fetchone()
+        cutoff_after = datetime(2026, 1, 3, 10, 5, tzinfo=UTC)
+        self.assertEqual(self.database.delete_expired_raw(0, cutoff_after), 2)
+        self.assertEqual(self.database.aggregate_completed(cutoff_after), 0)
+        aggregate_after = self.database.connection.execute(
+            "SELECT * FROM aggregates_5m"
+        ).fetchone()
+        self.assertEqual(tuple(aggregate_after), tuple(aggregate_before))
 
     def test_local_day_query_excludes_adjacent_days_and_handles_dst_day(self):
         # Zurich fall-back day is 25 hours: both repeated 02:30 instants belong to it.

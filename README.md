@@ -88,7 +88,11 @@ Zeitstempel werden kanonisch in UTC gespeichert. Lokale Bucket- und
 Kalendertagslogik verwendet `zoneinfo` mit `Europe/Zurich`, einschließlich DST.
 Rohdaten werden nach standardmäßig sieben Tagen gelöscht
 (`SOLAR_RAW_RETENTION_DAYS`/`--retention-days`), aber ausschließlich, wenn ihr
-Bucket bereits aggregiert ist. Aggregate werden nicht automatisch gelöscht.
+Bucket bereits aggregiert und vollständig vor dem Retention-Cutoff abgeschlossen
+ist. Buckets werden dabei immer vollständig statt sampleweise gelöscht.
+Unveränderte Buckets werden nicht erneut aggregiert; neue verspätete Samples
+werden über einen geänderten `sample_count` erkannt. Aggregate werden nicht
+automatisch gelöscht.
 
 Da `DAY_ENERGY` auf der realen Anlage auch bei laufender Produktion `null` sein
 kann, ist dieser API-Wert nicht die einzige Quelle für den Dashboard-Tagesertrag.

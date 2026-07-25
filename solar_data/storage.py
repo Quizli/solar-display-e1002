@@ -137,6 +137,8 @@ class SolarDatabase:
         values = [getattr(snapshot, field) for field in POWER_FIELDS]
         values += [snapshot.battery_soc_pct, snapshot.energy_today_kwh]
         if snapshot.energy_total_kwh is not None:
+            if snapshot.energy_total_kwh < 0:
+                raise ValueError("energy_total_kwh must not be negative")
             values.append(snapshot.energy_total_kwh)
         if any(isinstance(value, bool) or not math.isfinite(value) for value in values):
             raise ValueError("snapshot contains an invalid numeric value")
@@ -187,8 +189,15 @@ class SolarDatabase:
             raise ValueError("now must be timezone-aware")
         current_bucket = _utc_text(bucket_start(now))
         buckets = self.connection.execute(
-            """SELECT DISTINCT bucket_start_utc FROM raw_samples
-               WHERE bucket_start_utc < ? ORDER BY bucket_start_utc""",
+            """SELECT raw.bucket_start_utc
+               FROM raw_samples AS raw
+               LEFT JOIN aggregates_5m AS aggregate
+                 ON aggregate.bucket_start_utc = raw.bucket_start_utc
+               WHERE raw.bucket_start_utc < ?
+               GROUP BY raw.bucket_start_utc, aggregate.sample_count
+               HAVING aggregate.sample_count IS NULL
+                  OR COUNT(*) <> aggregate.sample_count
+               ORDER BY raw.bucket_start_utc""",
             (current_bucket,),
         ).fetchall()
         with self.connection:
@@ -232,15 +241,15 @@ class SolarDatabase:
         now = now or datetime.now(UTC)
         if now.tzinfo is None or now.utcoffset() is None:
             raise ValueError("now must be timezone-aware")
-        cutoff = _utc_text(now - timedelta(days=retention_days))
+        cutoff_bucket = _utc_text(bucket_start(now - timedelta(days=retention_days)))
         with self.connection:
             cursor = self.connection.execute(
                 """DELETE FROM raw_samples
-                   WHERE timestamp_utc < ? AND EXISTS (
+                   WHERE bucket_start_utc < ? AND EXISTS (
                        SELECT 1 FROM aggregates_5m AS aggregate
                        WHERE aggregate.bucket_start_utc = raw_samples.bucket_start_utc
                    )""",
-                (cutoff,),
+                (cutoff_bucket,),
             )
         return cursor.rowcount
 
