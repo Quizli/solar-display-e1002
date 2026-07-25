@@ -159,10 +159,13 @@ Fronius -> Collector -> SQLite -> Dashboard-Publisher -> publish/dashboard.svg -
 
 Der Collector speichert weiterhin typischerweise alle zehn Sekunden. Das davon
 unabhängige Display-Intervall beträgt standardmäßig fünf Minuten. Für Solar-,
-Haus-, Ohmpilot-, Batterie- und Netzleistung verwendet der Publisher die zwei
-neuesten abgeschlossenen 5-Minuten-Buckets und gewichtet sie nach deren
-`sample_count`. Ein einzelner Bucket beziehungsweise der letzte gültige
-Raw-Snapshot dienen als Fallback. Der Hauswert enthält die Ohmpilot-Leistung
+Haus-, Ohmpilot-, Batterie- und Netzleistung verwendet der Publisher nur einen
+abgeschlossenen neuesten 5-Minuten-Bucket, dessen Ende gegenüber dem letzten
+Raw-Snapshot höchstens zehn Minuten alt ist. Ein zweiter, nach `sample_count`
+gewichteter Bucket wird ausschließlich bei direkter zeitlicher Nachbarschaft
+verwendet. Bei alten Buckets oder einer Datenlücke erfolgt der Fallback auf den
+einzelnen aktuellen Bucket beziehungsweise den letzten gültigen Raw-Snapshot.
+Der Hauswert enthält die Ohmpilot-Leistung
 bereits. Der Tagesertrag kommt ausschließlich aus `SolarDatabase.daily_energy()`;
 der Eigenverbrauch wird aus den Tagesaggregaten integriert.
 

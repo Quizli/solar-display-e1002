@@ -134,11 +134,14 @@ class DashboardTest(unittest.TestCase):
             self.assertIn("<svg", output.read_text(encoding="utf-8"))
 
 
-class DockerIgnoreTest(unittest.TestCase):
+class IgnoreFilesTest(unittest.TestCase):
     def test_runtime_data_and_environment_are_excluded(self):
-        rules = Path(".dockerignore").read_text(encoding="utf-8").splitlines()
+        docker_rules = Path(".dockerignore").read_text(encoding="utf-8").splitlines()
         for required in (".env", "data/", "publish/"):
-            self.assertIn(required, rules)
+            self.assertIn(required, docker_rules)
+        git_rules = Path(".gitignore").read_text(encoding="utf-8").splitlines()
+        for required in ("publish/", "renderer/output/", "data/", ".env"):
+            self.assertIn(required, git_rules)
 
 
 if __name__ == "__main__":

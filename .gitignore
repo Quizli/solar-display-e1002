@@ -11,3 +11,7 @@ data/
 .env
 .env.*
 !.env.example
+
+# Generierte Dashboard- und Renderer-Ausgaben
+publish/
+renderer/output/
