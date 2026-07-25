@@ -13,9 +13,10 @@ from sun_data.client import SunDataError, fetch_sun_data, parse_response, valida
 NOW = datetime(2026, 7, 25, 10, 0, tzinfo=timezone.utc)
 
 
-def payload(duration=27360):
+def payload(duration=27360, weather_code=0):
     return {"daily": {"time": ["2026-07-25"], "sunrise": ["2026-07-25T05:50"],
-                      "sunset": ["2026-07-25T21:10"], "sunshine_duration": [duration]}}
+                      "sunset": ["2026-07-25T21:10"], "sunshine_duration": [duration],
+                      "weather_code": [weather_code]}}
 
 
 class SunClientTest(unittest.TestCase):
@@ -25,6 +26,18 @@ class SunClientTest(unittest.TestCase):
         self.assertEqual(result.sunrise.strftime("%H:%M"), "05:50")
         self.assertEqual(result.sunset.strftime("%H:%M"), "21:10")
         self.assertIsNotNone(result.sunrise.utcoffset())
+        self.assertEqual(result.weather_code, 0)
+        self.assertEqual(result.weather_code_status, "valid")
+
+    def test_missing_or_invalid_weather_code_keeps_sun_data(self):
+        missing = payload()
+        del missing["daily"]["weather_code"]
+        self.assertEqual(parse_response(missing, NOW, NOW.date()).weather_code_status, "missing")
+        for value in (True, -1, 4, 100, "2", None):
+            with self.subTest(value=value):
+                result = parse_response(payload(weather_code=value), NOW, NOW.date())
+                self.assertIsNone(result.weather_code)
+                self.assertEqual(result.weather_code_status, "invalid")
 
     def test_wrong_local_day_and_bad_fields_are_rejected(self):
         bad = payload()
@@ -80,6 +93,27 @@ class SunCacheTest(unittest.TestCase):
         self.assertEqual(second.source, "cache")
         self.assertEqual(self.calls, 1)
         self.assertEqual(list(self.path.parent.glob("*.tmp")), [])
+
+    def test_legacy_cache_without_weather_fields_is_migrated_without_request(self):
+        self.path.write_text(json.dumps({
+            "local_date": "2026-07-25",
+            "sunrise": "2026-07-25T05:50:00+02:00",
+            "sunset": "2026-07-25T21:10:00+02:00",
+            "sunshine_hours": 7.6,
+            "fetched_at": NOW.isoformat(),
+        }), encoding="utf-8")
+
+        def unexpected_fetch(*args, **kwargs):
+            self.fail("fresh legacy cache must not trigger an external request")
+
+        result = get_sun_data(47, 8, self.path, NOW + timedelta(minutes=5),
+                              refresh_seconds=1800, fetcher=unexpected_fetch)
+        self.assertEqual(result.source, "cache")
+        self.assertEqual(result.data.sunshine_hours, 7.6)
+        self.assertEqual(result.data.sunrise.strftime("%H:%M"), "05:50")
+        self.assertEqual(result.data.sunset.strftime("%H:%M"), "21:10")
+        self.assertIsNone(result.data.weather_code)
+        self.assertEqual(result.data.weather_code_status, "missing")
 
     def test_api_error_uses_only_current_and_young_cache(self):
         get_sun_data(47, 8, self.path, NOW, fetcher=self.fetch)

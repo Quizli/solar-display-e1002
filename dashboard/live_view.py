@@ -5,6 +5,7 @@ from typing import Dict, Optional
 from solar_data.storage import POWER_FIELDS, SolarDatabase, _aware_utc
 from solar_data.timezones import ZURICH
 from .chart import build_chart
+from .weather import weather_icon_variant
 
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 MONTHS = ("", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember")
@@ -124,6 +125,8 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
     sun = sun_result.data if sun_result else None
     sun_age = ((now_utc - sun.fetched_at.astimezone(timezone.utc)).total_seconds()
                if sun else None)
+    weather_code = sun.weather_code if sun else None
+    weather_variant = weather_icon_variant(weather_code)
     display = dict(power)
     displayed_heat = max(0.0, power["heat_power_kw"] or 0.0)
     display.update({
@@ -138,6 +141,7 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "sun_hours": sun.sunshine_hours if sun else None,
         "sunrise": sun.sunrise.strftime("%H:%M") if sun else None,
         "sunset": sun.sunset.strftime("%H:%M") if sun else None,
+        "weather_icon_variant": weather_variant,
         "co2_savings_kg": co2_savings,
         "story_line_1": story_1, "story_line_2": story_2,
         "day_yield_kwh": day_yield,
@@ -162,6 +166,9 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "sun_data_fetched_at": sun.fetched_at.isoformat() if sun else None,
         "sun_data_age_seconds": max(0.0, sun_age) if sun_age is not None else None,
         "sun_data_error": sun_result.error if sun_result else None,
+        "weather_code": weather_code,
+        "weather_code_status": sun.weather_code_status if sun else "missing",
+        "weather_icon_variant": weather_variant,
         "co2": {"savings_kg": co2_savings, "factor_kg_per_kwh": factor, "basis": CO2_BASIS},
         "chart_status": {
             "chart_source": "aggregates_5m", "local_day": chart_local_day.isoformat(),

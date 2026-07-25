@@ -190,7 +190,9 @@ heutigen lokalen Tag stammen aus der Open-Meteo Forecast API. Open-Meteos
 `sunshine_duration` ist die prognostizierte Sonnenscheindauer in Sekunden; das
 Dashboard rechnet sie in Stunden um. Es handelt sich ausdrücklich um eine
 Tagesprognose, nicht um historische Messdaten oder eine aus Bewölkung
-abgeleitete Näherung.
+abgeleitete Näherung. Der tägliche WMO-`weather_code` steuert das kompakte
+Wettericon neben den Sonnenstunden. Bei einem fehlenden oder ungültigen Code
+bleibt die Sonnenstundenanzeige mit einem neutralen Sonnenicon verfügbar.
 
 Für den produktiven Abruf müssen `SOLAR_LAT` und `SOLAR_LON` in der lokalen
 `.env` gesetzt werden. Die Vorlage enthält absichtlich keine privaten
@@ -231,7 +233,7 @@ sudo docker compose logs --tail=50 dashboard-publisher
 sudo docker compose exec dashboard-publisher python3 -m dashboard status
 ```
 
-Allgemeine Wetterdaten, Temperatur, Wettericons, Niederschlag, Charts,
+Allgemeine Wetterdaten, Temperatur, Niederschlagsmengen,
 wechselnde Facts, historische Sonnenstunden und eine direkte E1002-Upload-API
 sind bewusst nicht Teil dieser Etappe.
 

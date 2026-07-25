@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from solar_data.timezones import ZURICH
-from .client import SunData, SunDataError, _local_datetime, _finite_number, fetch_sun_data
+from .client import (SunData, SunDataError, _finite_number, _local_datetime,
+                     _valid_weather_code, fetch_sun_data)
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,14 @@ def _read_cache(path):
     sunset = _local_datetime(payload["sunset"], "sunset")
     if sunrise.date() != local_date or sunset.date() != local_date:
         raise SunDataError("cached dates do not match")
-    return SunData(local_date, sunrise, sunset, hours, fetched_at)
+    weather_code = payload.get("weather_code")
+    weather_status = payload.get("weather_code_status", "missing")
+    if ((weather_code is not None and not _valid_weather_code(weather_code)) or
+            (weather_status == "valid" and weather_code is None) or
+            weather_status not in ("valid", "missing", "invalid")):
+        weather_code, weather_status = None, "invalid"
+    return SunData(local_date, sunrise, sunset, hours, fetched_at,
+                   weather_code, weather_status)
 
 
 def _write_cache(path, data):

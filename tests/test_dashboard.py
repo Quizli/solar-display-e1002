@@ -12,6 +12,7 @@ from dashboard.live_view import validate_co2_factor
 from dashboard.chart import power_y
 from dashboard.__main__ import _positive, _sun_coordinates
 from sun_data.cache import SunDataResult
+from sun_data.client import SunData
 from dashboard.publisher import publish_view
 from fronius.model import LiveData
 from renderer.src.render import format_day_yield, main as render_main, render_dashboard
@@ -209,6 +210,16 @@ class DashboardTest(unittest.TestCase):
             publish_view(view, output)
             self.assertTrue(output.is_file())
 
+    def test_legacy_weatherless_sun_data_uses_sunny_view_fallback(self):
+        sun = SunData(self.now.date(), self.now, self.now + timedelta(hours=12),
+                      7.6, self.now, None, "missing")
+        result = SunDataResult(sun, "fresh", "cache")
+        view = build_live_view(self.db, self.now, sun_result=result)
+        self.assertEqual(view["weather_code_status"], "missing")
+        self.assertEqual(view["weather_icon_variant"], "sunny")
+        self.assertEqual(view["display"]["sun_hours"], 7.6)
+        self.assertIn('data-weather-icon="sunny"', render_dashboard(view["display"]))
+
     def test_positive_rejects_non_finite_values(self):
         for value in ("nan", "inf", "-inf", "0", "-1"):
             with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
@@ -242,7 +253,10 @@ class DashboardTest(unittest.TestCase):
             self.assertIn(f'<text x="205" y="{y}"', template)
             self.assertNotIn(f'<text x="202" y="{y}"', template)
         self.assertIn(">Wärme</text>", template)
-        self.assertIn('<g transform="translate(-9 0)"><circle cx="589"', template)
+        self.assertIn('<g transform="translate(-9 0)">{{WEATHER_ICON_SVG}}', template)
+        self.assertIn('x="22" y="390" width="12" height="19"', template)
+        self.assertNotIn('x="22" y="389" width="12" height="19"', template)
+        self.assertIn('x="26" y="387" width="4" height="4"', template)
         self.assertIn('<line x1="632" y1="443" x2="645" y2="426"', template)
         svg = render_dashboard({
             "chart_solar_line": "M 1 1", "chart_house_line": "M 2 2",
