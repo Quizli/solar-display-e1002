@@ -35,6 +35,13 @@ class Aggregate5m:
     heat_available: bool
 
 
+@dataclass(frozen=True)
+class DailyEnergy:
+    energy_today_kwh: float
+    source: str
+    complete: bool
+
+
 def _aware_utc(value: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -94,6 +101,7 @@ class SolarDatabase:
                     battery_power_kw REAL NOT NULL,
                     grid_power_kw REAL NOT NULL,
                     energy_today_kwh REAL NOT NULL,
+                    energy_total_kwh REAL,
                     battery_available INTEGER NOT NULL CHECK (battery_available IN (0, 1)),
                     heat_available INTEGER NOT NULL CHECK (heat_available IN (0, 1))
                 );
@@ -114,17 +122,32 @@ class SolarDatabase:
                 );
                 """
             )
+            columns = {
+                row[1] for row in self.connection.execute("PRAGMA table_info(raw_samples)")
+            }
+            if "energy_total_kwh" not in columns:
+                self.connection.execute(
+                    "ALTER TABLE raw_samples ADD COLUMN energy_total_kwh REAL"
+                )
+            self.connection.execute("DELETE FROM schema_version")
+            self.connection.execute("INSERT INTO schema_version(version) VALUES (2)")
 
     def store_snapshot(self, snapshot: LiveData) -> bool:
         timestamp = _aware_utc(snapshot.timestamp)
         values = [getattr(snapshot, field) for field in POWER_FIELDS]
         values += [snapshot.battery_soc_pct, snapshot.energy_today_kwh]
+        if snapshot.energy_total_kwh is not None:
+            values.append(snapshot.energy_total_kwh)
         if any(isinstance(value, bool) or not math.isfinite(value) for value in values):
             raise ValueError("snapshot contains an invalid numeric value")
         with self.connection:
             cursor = self.connection.execute(
-                """INSERT OR IGNORE INTO raw_samples VALUES
-                   (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT OR IGNORE INTO raw_samples (
+                       timestamp_utc, bucket_start_utc, solar_power_kw,
+                       house_power_kw, heat_power_kw, battery_soc_pct,
+                       battery_power_kw, grid_power_kw, energy_today_kwh,
+                       energy_total_kwh, battery_available, heat_available
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     _utc_text(timestamp),
                     _utc_text(bucket_start(timestamp)),
@@ -135,6 +158,7 @@ class SolarDatabase:
                     snapshot.battery_power_kw,
                     snapshot.grid_power_kw,
                     snapshot.energy_today_kwh,
+                    snapshot.energy_total_kwh,
                     int(snapshot.battery_available),
                     int(snapshot.heat_available),
                 ),
@@ -152,6 +176,7 @@ class SolarDatabase:
             **{field: row[field] for field in POWER_FIELDS},
             battery_soc_pct=row["battery_soc_pct"],
             energy_today_kwh=row["energy_today_kwh"],
+            energy_total_kwh=row["energy_total_kwh"],
             battery_available=bool(row["battery_available"]),
             heat_available=bool(row["heat_available"]),
         )
@@ -237,3 +262,49 @@ class SolarDatabase:
             battery_available=bool(row["battery_available"]),
             heat_available=bool(row["heat_available"]),
         ) for row in rows]
+
+    def daily_energy(self, local_day: date) -> DailyEnergy:
+        """Derive a Zurich-local day's yield from the counter or power buckets."""
+        local_start = datetime.combine(local_day, datetime.min.time(), tzinfo=ZURICH)
+        local_end = datetime.combine(
+            local_day + timedelta(days=1), datetime.min.time(), tzinfo=ZURICH
+        )
+        start, end = _utc_text(local_start), _utc_text(local_end)
+        last_before = self.connection.execute(
+            """SELECT energy_total_kwh FROM raw_samples
+               WHERE timestamp_utc < ? AND energy_total_kwh IS NOT NULL
+               ORDER BY timestamp_utc DESC LIMIT 1""",
+            (start,),
+        ).fetchone()
+        day_values = self.connection.execute(
+            """SELECT energy_total_kwh FROM raw_samples
+               WHERE timestamp_utc >= ? AND timestamp_utc < ?
+                 AND energy_total_kwh IS NOT NULL
+               ORDER BY timestamp_utc""",
+            (start, end),
+        ).fetchall()
+
+        if day_values:
+            baseline = last_before[0] if last_before else day_values[0][0]
+            complete = last_before is not None
+            counter_values = ([baseline] if complete else []) + [row[0] for row in day_values]
+            monotonic = all(
+                current >= previous
+                for previous, current in zip(counter_values, counter_values[1:])
+            )
+            difference = day_values[-1][0] - baseline
+            if monotonic and difference >= 0 and (complete or len(day_values) >= 2):
+                return DailyEnergy(difference, "total_counter", complete)
+
+        # Counter reset, no usable baseline, or no counter: integrate each
+        # persisted bucket over its actual overlap with this UTC day interval.
+        energy = 0.0
+        start_utc = local_start.astimezone(UTC)
+        end_utc = local_end.astimezone(UTC)
+        for aggregate in self.aggregates_for_local_day(local_day):
+            bucket = _aware_utc(aggregate.bucket_start)
+            overlap_start = max(bucket, start_utc)
+            overlap_end = min(bucket + timedelta(minutes=5), end_utc)
+            hours = max(0.0, (overlap_end - overlap_start).total_seconds() / 3600.0)
+            energy += max(0.0, aggregate.solar_power_kw) * hours
+        return DailyEnergy(max(0.0, energy), "solar_integration", False)

@@ -55,6 +55,36 @@ def _day_energy(payload: Optional[Mapping[str, Any]]) -> float:
     return total_wh / 1000.0
 
 
+def _non_negative_energy(value: Any) -> Optional[float]:
+    """Return a valid cumulative Wh value, otherwise mark it unavailable."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    result = float(value)
+    if not math.isfinite(result) or result < 0:
+        return None
+    return result
+
+
+def _total_energy(power_flow: Mapping[str, Any]) -> Optional[float]:
+    data = _body(power_flow, "PowerFlow")
+    site = data.get("Site")
+    if isinstance(site, Mapping):
+        site_total = _non_negative_energy(site.get("E_Total"))
+        if site_total is not None:
+            return site_total / 1000.0
+
+    inverters = data.get("Inverters")
+    if not isinstance(inverters, Mapping):
+        return None
+    totals = []
+    for inverter in inverters.values():
+        if isinstance(inverter, Mapping):
+            total = _non_negative_energy(inverter.get("E_Total"))
+            if total is not None:
+                totals.append(total)
+    return sum(totals) / 1000.0 if totals else None
+
+
 def _battery(_: Optional[Mapping[str, Any]]) -> Tuple[bool, float, float]:
     # No real storage field names or power direction have been verified yet.
     # Keeping this mapping isolated makes the future sign conversion local.
@@ -94,6 +124,7 @@ def normalize_live_data(
         battery_power_kw=battery_power,
         grid_power_kw=-grid_w / 1000.0,
         energy_today_kwh=_day_energy(inverter_realtime),
+        energy_total_kwh=_total_energy(power_flow),
         battery_available=battery_available,
         heat_available=heat_available,
     )

@@ -79,7 +79,8 @@ eine schleichende Intervallverschiebung und reagiert auf `SIGTERM`/`SIGINT`.
 
 SQLite liegt standardmäßig unter `data/solar.db`; `SOLAR_DB_PATH` oder
 `--db-path` wählen ein persistentes Docker-/NAS-Verzeichnis. `raw_samples`
-enthält die normalisierten Einzelmessungen. `aggregates_5m` enthält idempotente,
+enthält die normalisierten Einzelmessungen einschließlich des kumulierten
+`energy_total_kwh`-Zählers. `aggregates_5m` enthält idempotente,
 nur nach Bucket-Abschluss erzeugte Fünf-Minuten-Werte: Leistung als Mittelwert,
 SoC und Tagesenergie als letzten Wert sowie Sample-Anzahl und Verfügbarkeit.
 
@@ -88,6 +89,16 @@ Kalendertagslogik verwendet `zoneinfo` mit `Europe/Zurich`, einschließlich DST.
 Rohdaten werden nach standardmäßig sieben Tagen gelöscht
 (`SOLAR_RAW_RETENTION_DAYS`/`--retention-days`), aber ausschließlich, wenn ihr
 Bucket bereits aggregiert ist. Aggregate werden nicht automatisch gelöscht.
+
+Da `DAY_ENERGY` auf der realen Anlage auch bei laufender Produktion `null` sein
+kann, ist dieser API-Wert nicht die einzige Quelle für den Dashboard-Tagesertrag.
+`energy_total_kwh` stammt bevorzugt aus `Site.E_Total`, ersatzweise aus der
+Summe gültiger `Inverters.*.E_Total`-Werte. Der Tagesertrag wird aus letztem
+Tageszähler minus letztem Zähler vor der lokalen Tagesgrenze berechnet. Fehlt
+der vorherige Wert, kann der früheste Tageswert eine als unvollständig markierte
+Baseline bilden. Bei fehlender Baseline oder einem Zählerrücksprung werden die
+vorhandenen 5-Minuten-Mittelwerte der PV-Leistung über ihre tatsächliche Dauer
+integriert; negative Tageserträge werden nie ausgegeben.
 
 Manuelle Befehle (die globale DB-Option steht vor dem Unterbefehl):
 

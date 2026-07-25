@@ -12,12 +12,13 @@ UTC = timezone.utc
 ZURICH = ZoneInfo("Europe/Zurich")
 
 
-def snapshot(timestamp, value=1.0, soc=50.0, energy=10.0):
+def snapshot(timestamp, value=1.0, soc=50.0, energy=10.0, total=1000.0):
     return LiveData(
         timestamp=timestamp, solar_power_kw=value, house_power_kw=value + 1,
         heat_power_kw=value + 2, battery_soc_pct=soc,
         battery_power_kw=value + 3, grid_power_kw=value + 4,
         energy_today_kwh=energy, battery_available=True, heat_available=False,
+        energy_total_kwh=total,
     )
 
 
@@ -95,6 +96,48 @@ class StorageTest(unittest.TestCase):
         self.database.aggregate_completed(datetime(2026, 10, 26, 1, tzinfo=UTC))
         rows = self.database.aggregates_for_local_day(date(2026, 10, 25))
         self.assertEqual(len(rows), 3)
+
+    def test_daily_energy_uses_counter_across_zurich_day_boundary(self):
+        # Local 2026-07-25 begins at 22:00 UTC on the previous date.
+        self.database.store_snapshot(snapshot("2026-07-24T21:59:00+00:00", total=100))
+        self.database.store_snapshot(snapshot("2026-07-24T22:01:00+00:00", total=100.1))
+        self.database.store_snapshot(snapshot("2026-07-25T21:59:00+00:00", total=112.5))
+        self.database.store_snapshot(snapshot("2026-07-25T22:01:00+00:00", total=113))
+        result = self.database.daily_energy(date(2026, 7, 25))
+        self.assertAlmostEqual(result.energy_today_kwh, 12.5)
+        self.assertEqual(result.source, "total_counter")
+        self.assertTrue(result.complete)
+
+    def test_missing_prior_baseline_returns_partial_counter_result(self):
+        self.database.store_snapshot(snapshot("2026-07-25T08:00:00+00:00", total=105))
+        self.database.store_snapshot(snapshot("2026-07-25T18:00:00+00:00", total=111))
+        result = self.database.daily_energy(date(2026, 7, 25))
+        self.assertEqual(result.energy_today_kwh, 6)
+        self.assertEqual(result.source, "total_counter")
+        self.assertFalse(result.complete)
+
+    def test_counter_reset_falls_back_to_five_minute_power_integration(self):
+        self.database.store_snapshot(snapshot("2026-07-24T21:59:00+00:00", total=100))
+        self.database.store_snapshot(
+            snapshot("2026-07-25T10:01:00+00:00", value=12, total=2)
+        )
+        self.database.store_snapshot(
+            snapshot("2026-07-25T10:06:00+00:00", value=12, total=3)
+        )
+        self.database.aggregate_completed(datetime(2026, 7, 25, 10, 15, tzinfo=UTC))
+        result = self.database.daily_energy(date(2026, 7, 25))
+        self.assertAlmostEqual(result.energy_today_kwh, 2)
+        self.assertEqual(result.source, "solar_integration")
+        self.assertFalse(result.complete)
+
+    def test_single_counter_without_baseline_uses_non_negative_power_fallback(self):
+        self.database.store_snapshot(
+            snapshot("2026-07-25T10:01:00+00:00", value=-3, total=5)
+        )
+        self.database.aggregate_completed(datetime(2026, 7, 25, 10, 10, tzinfo=UTC))
+        result = self.database.daily_energy(date(2026, 7, 25))
+        self.assertEqual(result.energy_today_kwh, 0)
+        self.assertEqual(result.source, "solar_integration")
 
 
 if __name__ == "__main__":
