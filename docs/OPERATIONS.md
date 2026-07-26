@@ -51,11 +51,13 @@ additional transactionally consistent manual backup while the application is
 running, execute this single PuTTY-compatible command from the repository root:
 
 ```bash
-python3 -c 'import sqlite3; source=sqlite3.connect("data/solar.db"); target=sqlite3.connect("data/solar-backup.db"); source.backup(target); target.close(); source.close()'
+sudo docker compose exec -T collector python3 -c 'import sqlite3; source=sqlite3.connect("/data/solar.db"); target=sqlite3.connect("/data/solar-backup.db"); source.backup(target); target.close(); source.close()'
 ```
 
-Move or copy `data/solar-backup.db` into the protected backup destination after
-the command completes.
+`/data` is the persistent `./data` bind mount, so the backup appears on the NAS
+as `data/solar-backup.db`. SQLite's `backup()` creates a consistent backup while
+the application is running. Include the resulting file in the protected
+Synology backup after the command completes.
 
 ## Restore
 
