@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime
 
-from dashboard.facts.catalog import FACTS, FACTS_BY_ID
+from dashboard.facts.catalog import FACTS, FACTS_BY_ID, render_d01
 from dashboard.facts.engine import _render, build_story_from_context, determine_phase
 from dashboard.facts.formatting import format_fact_number
 from dashboard.facts.models import FactContext
@@ -48,6 +48,17 @@ class FactsEngineTest(unittest.TestCase):
         changed = build_story_from_context(self.context(today=76))
         self.assertEqual(first.fact_id, changed.fact_id)
 
+    def test_selection_remains_stable_across_activation_thresholds(self):
+        for before, after in ((.9, 1.1), (4.9, 5.1), (9.9, 10.1),
+                              (24.9, 25.1), (49.9, 50.1), (99.9, 100.1),
+                              (119.9, 120.1)):
+            first = build_story_from_context(self.context(today=before))
+            later = build_story_from_context(self.context(today=after))
+            selected = FACTS_BY_ID.get(first.fact_id)
+            if selected and selected.min_kwh <= after <= selected.max_kwh:
+                with self.subTest(before=before, after=after, fact=first.fact_id):
+                    self.assertEqual(first.fact_id, later.fact_id)
+
     def test_zero_energy_never_creates_conversion_fact(self):
         story = build_story_from_context(self.context(12, today=0, power=1))
         self.assertIn(story.fact_id, {"TECH"})
@@ -56,6 +67,22 @@ class FactsEngineTest(unittest.TestCase):
         stories = [build_story_from_context(self.context(hour, today=75))
                    for hour in range(18, 24)]
         self.assertGreater(len({story.fact_id for story in stories}), 1)
+
+    def test_adjacent_hours_avoid_same_fact_and_family(self):
+        stories = [build_story_from_context(self.context(hour=h, today=75))
+                   for h in range(6, 24)]
+        for previous, current in zip(stories, stories[1:]):
+            if previous.family != "technical" and current.family != "technical":
+                self.assertNotEqual(previous.fact_id, current.fact_id)
+                self.assertNotEqual(previous.family, current.family)
+
+    def test_adjacent_hours_with_changing_ranges_use_alternatives(self):
+        energies = (1, 5, 10, 25, 50, 75, 100, 121)
+        stories = [build_story_from_context(self.context(hour=hour, today=energy))
+                   for hour, energy in zip(range(8, 16), energies)]
+        for previous, current in zip(stories, stories[1:]):
+            if previous.family != "technical" and current.family != "technical":
+                self.assertNotEqual(previous.fact_id, current.fact_id)
 
     def test_energy_ranges_filter_catalog(self):
         at_five = {fact.fact_id for fact in FACTS if fact.min_kwh <= 5 <= fact.max_kwh}
@@ -97,6 +124,12 @@ class FactsEngineTest(unittest.TestCase):
                 for fragment in fragments:
                     self.assertIn(fragment, text)
 
+    def test_iphone_rounding_at_small_and_large_yields(self):
+        for energy, expected in ((1, "59"), (5, "290"), (25, "1’500"),
+                                 (75, "4’400"), (120, "7’100")):
+            with self.subTest(energy=energy):
+                self.assertIn(expected, " ".join(render_d01(energy, "heutigen")))
+
     def test_catalog_has_correct_grammar_and_no_punchlines(self):
         catalog_text = " ".join(" ".join(fact.render(75, "heutigen")) for fact in FACTS)
         for forbidden in ("Der heutigen Solarertrag", "Der gestrigen Solarertrag",
@@ -118,6 +151,15 @@ class FactsEngineTest(unittest.TestCase):
     def test_fog_has_its_own_status(self):
         story = build_story_from_context(self.context(9, today=0, power=0, weather=45))
         self.assertIn("neblig", story.line_1)
+
+    def test_zero_production_after_sunset_is_a_completed_day(self):
+        context = self.context(22, today=0, power=0)
+        self.assertEqual(determine_phase(context), ("after_sunset", "today"))
+        story = build_story_from_context(context)
+        self.assertEqual(story.fact_id, "ZERO_DAY_COMPLETE")
+        text = story.line_1 + story.line_2
+        self.assertNotIn("Morgen ist", text)
+        self.assertNotIn("noch nicht angelaufen", text)
 
 
 if __name__ == "__main__":

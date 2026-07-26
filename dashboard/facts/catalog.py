@@ -9,9 +9,7 @@ def _energy_period(energy, period):
 
 
 def render_d01(e, p):
-    # Phone charging is an intentionally approximate comparison; two useful
-    # significant digits avoid implying precision in the 17 Wh model value.
-    value = format_fact_number(round(e / .017, -2))
+    value = format_fact_number(e / .017, "approximate_count")
     energy, p = _energy_period(e, p)
     return f"Die {p} {energy} kWh reichen für rund", f"{value} vollständige iPhone-Ladungen."
 

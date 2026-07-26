@@ -10,6 +10,14 @@ def format_fact_number(value, unit_type="count"):
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValueError("fact number must be finite")
     value = max(0.0, float(value))
+    if unit_type == "approximate_count":
+        if value < 100:
+            rounded = round(value)
+        elif value < 1_000:
+            rounded = round(value / 10) * 10
+        else:
+            rounded = round(value / 100) * 100
+        return f"{rounded:,}".replace(",", "’")
     if unit_type in ("decimal", "energy"):
         # Energy/status values retain useful hundredths below one kWh.
         places = 2 if value < 1 else 1

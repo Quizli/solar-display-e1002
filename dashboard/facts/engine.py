@@ -27,13 +27,13 @@ def determine_phase(context):
         return "morning_waiting", "yesterday"
     if now < sunrise:
         return "pre_sunrise", "yesterday"
+    if sunset is not None and now > sunset:
+        return "after_sunset", "today"
     if not started:
         if now < sunrise + timedelta(hours=2):
             return "morning_waiting", "yesterday"
         return "zero_production_day", None
-    if sunset is None or now <= sunset:
-        return "active_production", "today"
-    return "after_sunset", "today"
+    return "active_production", "today"
 
 
 def _digest(text):
@@ -52,6 +52,11 @@ def _render(fact, energy, period):
 
 def _special(context, phase, period, energy):
     seed = f"{context.now_local.date()}:{context.now_local.hour:02d}:{phase}:0.0"
+    if phase == "after_sunset" and (energy is None or energy < .1):
+        return "ZERO_DAY_COMPLETE", (
+            "Der heutige Tag endet ohne messbare Solarproduktion.",
+            "Morgen beginnt der Zähler wieder bei null.",
+        )
     if phase == "morning_waiting":
         options = []
         if energy is not None and energy >= .1:
@@ -74,6 +79,33 @@ def _special(context, phase, period, energy):
     return None
 
 
+def _ordered_facts(local_date, hour):
+    """Return a stable hourly order whose activation tiers never leapfrog."""
+    date_text = local_date.isoformat()
+    return sorted(FACTS, key=lambda fact: (
+        fact.min_kwh,
+        _digest(f"{date_text}:{hour:02d}:{fact.fact_id}"),
+    ))
+
+
+def select_fact_for_hour(context, hour, energy, excluded_family=None, excluded_id=None):
+    if energy is None or energy < .1:
+        return None
+    period = "heutigen" if determine_phase(context)[1] == "today" else "gestrigen"
+    candidates = []
+    for fact in _ordered_facts(context.now_local.date(), hour):
+        if not fact.min_kwh <= energy <= fact.max_kwh:
+            continue
+        rendered = _render(fact, energy, period)
+        if rendered is not None:
+            candidates.append((fact, rendered))
+    alternatives = [(fact, rendered) for fact, rendered in candidates
+                    if fact.family != excluded_family and fact.fact_id != excluded_id]
+    if alternatives:
+        return alternatives[0]
+    return candidates[0] if candidates and excluded_family is None and excluded_id is None else None
+
+
 def build_story_from_context(context):
     phase, period = determine_phase(context)
     energy = context.today_energy_kwh if period == "today" else context.yesterday_energy_kwh
@@ -82,27 +114,21 @@ def build_story_from_context(context):
         fact_id, lines = special
         return _story(fact_id, "status", lines, phase, period, energy)
     if energy is not None and energy >= .1:
-        rendered = [(fact, _render(fact, energy, "heutigen" if period == "today" else "gestrigen"))
-                    for fact in FACTS if fact.min_kwh <= energy <= fact.max_kwh]
-        rendered = [(fact, text) for fact, text in rendered if text is not None]
-        # The date fixes the catalog order, and the hour fixes only its start
-        # position. Neither depends on the changing yield, so earlier hours are
-        # never recomputed using the current energy or phase.
-        local_date = context.now_local.date().isoformat()
-        ordered = sorted(FACTS, key=lambda fact: _digest(f"{local_date}:{fact.fact_id}"))
-        start_seed = f"{local_date}:{context.now_local.hour:02d}:{phase}"
-        start = _digest(start_seed) % len(ordered)
-        eligible = {fact.fact_id: text for fact, text in rendered}
-        previous_start = _digest(
-            f"{local_date}:{(context.now_local.hour - 1) % 24:02d}:{phase}"
-        ) % len(ordered)
-        previous_family = ordered[previous_start].family
-        candidates = [fact for offset in range(len(ordered))
-                      if (fact := ordered[(start + offset) % len(ordered)]).fact_id in eligible]
-        preferred = [fact for fact in candidates if fact.family != previous_family]
-        if preferred or candidates:
-            fact = (preferred or candidates)[0]
-            lines, short = eligible[fact.fact_id]
+        hour = context.now_local.hour
+        # Walk the small (at most 24 item) local-day plan so the exclusion is
+        # based on the fact actually selected for the preceding hour, rather
+        # than merely that hour's unfiltered start position.
+        selected = None
+        previous = None
+        for planned_hour in range(hour + 1):
+            selected = select_fact_for_hour(
+                context, planned_hour, energy,
+                excluded_family=previous[0].family if previous else None,
+                excluded_id=previous[0].fact_id if previous else None,
+            )
+            previous = selected
+        if selected:
+            fact, (lines, short) = selected
             return _story(fact.fact_id, fact.family, lines, phase, period, energy, short)
     seed = f"{context.now_local.date()}:{context.now_local.hour:02d}:{phase}:0.0"
     lines = FALLBACKS[_digest(seed) % len(FALLBACKS)]
