@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import logging
 import math
 from typing import Dict, Optional
 
@@ -9,9 +10,12 @@ from .weather import weather_icon_variant
 from .facts import (FactContext, Story, build_story_from_context,
                     eligible_facts_for_hour, hour_key, story_for_catalog_fact)
 from .facts.catalog import FACTS_BY_ID, has_eligible_fact_for_energy
+from .facts.history import (HISTORICAL_IDS, decode_and_render,
+                            eligible_historical_candidates, render_historical)
 
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 MONTHS = ("", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember")
+LOGGER = logging.getLogger(__name__)
 
 
 def _weighted(rows, field):
@@ -103,7 +107,8 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
         selection_bucket_by_hour=anchor_buckets,
     )
     initial = build_story_from_context(context)
-    if initial.family in ("status", "technical"):
+    morning_history = initial.phase in ("pre_sunrise", "morning_waiting")
+    if initial.family in ("status", "technical") and not morning_history:
         return initial
     if not persist_selection:
         return initial
@@ -121,6 +126,41 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
                 stored.selection_bucket_start, persisted=True, source="persisted")
             if reused:
                 return reused
+        if stored.fact_id in HISTORICAL_IDS:
+            reused = decode_and_render(stored.fact_id, context, stored.context_json)
+            if reused:
+                return Story(**{**reused.__dict__,
+                                "selection_energy_kwh": stored.selection_energy_kwh,
+                                "selection_bucket_start": stored.selection_bucket_start,
+                                "selection_persisted": True,
+                                "selection_source": "persisted"})
+            LOGGER.warning("persisted historical fact %s has invalid context",
+                           stored.fact_id)
+            return initial
+
+    used_history = any(item.fact_id in HISTORICAL_IDS for item in
+                       database.fact_selections_for_local_day(now_local.date()))
+    if not used_history:
+        historical = eligible_historical_candidates(database, context)
+        if historical:
+            candidate = historical[0]
+            rendered = render_historical(candidate.fact_id, context, candidate.context)
+            if rendered:
+                record = database.store_fact_selection(
+                    key, current_hour, candidate.fact_id, "history",
+                    (initial.selection_energy_kwh if initial.selection_energy_kwh is not None
+                     else yesterday_energy), initial.selection_bucket_start,
+                    context_json=candidate.context_json)
+                selected = decode_and_render(record.fact_id, context, record.context_json)
+                if selected:
+                    return Story(**{**selected.__dict__,
+                                    "selection_energy_kwh": record.selection_energy_kwh,
+                                    "selection_bucket_start": record.selection_bucket_start,
+                                    "selection_persisted": True,
+                                    "selection_source": "new"})
+
+    if initial.family in ("status", "technical"):
+        return initial
 
     selection_energy = initial.selection_energy_kwh
     candidates = eligible_facts_for_hour(
@@ -252,6 +292,9 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
             "selection_bucket_start": story.selection_bucket_start,
             "selection_persisted": story.selection_persisted,
             "selection_source": story.selection_source,
+            "historical_fact": story.historical_fact,
+            "historical_reference_day": story.historical_reference_day,
+            "historical_baseline_kwh": story.historical_baseline_kwh,
         },
         "sun_data_status": sun_result.status if sun_result else "missing",
         "sun_data_source": sun_result.source if sun_result else "none",

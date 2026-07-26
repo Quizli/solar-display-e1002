@@ -42,6 +42,12 @@ class DailyEnergy:
 
 
 @dataclass(frozen=True)
+class DailyYield:
+    local_day: date
+    energy_kwh: float
+
+
+@dataclass(frozen=True)
 class FactSelection:
     hour_key: str
     local_day: str
@@ -52,6 +58,7 @@ class FactSelection:
     selection_energy_kwh: Optional[float]
     selection_bucket_start: Optional[str]
     created_at_utc: str
+    context_json: Optional[str] = None
 
 
 def _aware_utc(value: str) -> datetime:
@@ -141,7 +148,8 @@ class SolarDatabase:
                     family TEXT NOT NULL,
                     selection_energy_kwh REAL,
                     selection_bucket_start TEXT,
-                    created_at_utc TEXT NOT NULL
+                    created_at_utc TEXT NOT NULL,
+                    context_json TEXT
                 );
                 """
             )
@@ -152,8 +160,15 @@ class SolarDatabase:
                 self.connection.execute(
                     "ALTER TABLE raw_samples ADD COLUMN energy_total_kwh REAL"
                 )
+            history_columns = {
+                row[1] for row in self.connection.execute("PRAGMA table_info(fact_history)")
+            }
+            if "context_json" not in history_columns:
+                self.connection.execute(
+                    "ALTER TABLE fact_history ADD COLUMN context_json TEXT"
+                )
             self.connection.execute("DELETE FROM schema_version")
-            self.connection.execute("INSERT INTO schema_version(version) VALUES (3)")
+            self.connection.execute("INSERT INTO schema_version(version) VALUES (4)")
 
     @staticmethod
     def _fact_selection(row) -> Optional[FactSelection]:
@@ -169,7 +184,8 @@ class SolarDatabase:
                              fact_id: str, family: str,
                              selection_energy_kwh: Optional[float],
                              selection_bucket_start: Optional[str] = None,
-                             created_at: Optional[datetime] = None) -> FactSelection:
+                             created_at: Optional[datetime] = None,
+                             context_json: Optional[str] = None) -> FactSelection:
         if local_hour.tzinfo is None or local_hour.utcoffset() is None:
             raise ValueError("local_hour must be timezone-aware")
         local_hour = local_hour.astimezone(ZURICH).replace(minute=0, second=0,
@@ -181,11 +197,12 @@ class SolarDatabase:
             self.connection.execute(
                 """INSERT OR IGNORE INTO fact_history (
                        hour_key, local_day, local_hour, dst_fold, fact_id, family,
-                       selection_energy_kwh, selection_bucket_start, created_at_utc
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       selection_energy_kwh, selection_bucket_start, created_at_utc,
+                       context_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (hour_key, local_hour.date().isoformat(), local_hour.isoformat(),
                  local_hour.fold, fact_id, family, selection_energy_kwh,
-                 selection_bucket_start, _utc_text(created_at)),
+                 selection_bucket_start, _utc_text(created_at), context_json),
             )
         return self.get_fact_selection(hour_key)
 
@@ -370,6 +387,43 @@ class SolarDatabase:
             battery_available=bool(row["battery_available"]),
             heat_available=bool(row["heat_available"]),
         ) for row in rows]
+
+    def daily_yield_from_aggregates(self, local_day: date) -> Optional[DailyYield]:
+        """Return the final cumulative aggregate for a Zurich-local day."""
+        start, end = self._local_day_bounds(local_day)
+        row = self.connection.execute(
+            """SELECT energy_today_kwh FROM aggregates_5m
+               WHERE bucket_start_utc >= ? AND bucket_start_utc < ?
+               ORDER BY bucket_start_utc DESC LIMIT 1""",
+            (_utc_text(start), _utc_text(end)),
+        ).fetchone()
+        if row is None:
+            return None
+        value = row[0]
+        if not math.isfinite(value):
+            return None
+        return DailyYield(local_day, max(0.0, value))
+
+    def completed_daily_yields(self, before_local_day: date,
+                               limit: Optional[int] = None) -> List[DailyYield]:
+        """Return completed aggregate-backed days chronologically, skipping gaps."""
+        if limit is not None and limit <= 0:
+            return []
+        before, _ = self._local_day_bounds(before_local_day)
+        sql = """SELECT bucket_start_utc, energy_today_kwh FROM aggregates_5m
+                 WHERE bucket_start_utc < ? ORDER BY bucket_start_utc DESC"""
+        rows = self.connection.execute(sql, (_utc_text(before),)).fetchall()
+        found = {}
+        for row in rows:
+            day = _aware_utc(row[0]).astimezone(ZURICH).date()
+            if day >= before_local_day or day in found:
+                continue
+            value = row[1]
+            if math.isfinite(value):
+                found[day] = DailyYield(day, max(0.0, value))
+                if limit is not None and len(found) >= limit:
+                    break
+        return [found[day] for day in sorted(found)]
 
     @staticmethod
     def _local_day_bounds(local_day: date):
