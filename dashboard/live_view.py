@@ -6,6 +6,8 @@ from solar_data.storage import POWER_FIELDS, SolarDatabase, _aware_utc
 from solar_data.timezones import ZURICH
 from .chart import build_chart
 from .weather import weather_icon_variant
+from .facts import FactContext, Story, build_story_from_context, hour_key
+from .facts.catalog import has_eligible_fact_for_energy
 
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 MONTHS = ("", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember")
@@ -68,6 +70,39 @@ def validate_co2_factor(value):
     return value
 
 
+def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None):
+    """Collect the existing inputs needed by the renderer-independent engine."""
+    now_local = now.astimezone(ZURICH)
+    yesterday = database.daily_energy(now_local.date() - timedelta(days=1))
+    yesterday_energy = yesterday.energy_today_kwh if yesterday and yesterday.energy_today_kwh >= 0 else None
+    anchors = {}
+    anchor_buckets = {}
+    for aggregate in database.aggregates_for_local_day(now_local.date()):
+        if not has_eligible_fact_for_energy(aggregate.energy_today_kwh):
+            continue
+        bucket_local = _aware_utc(aggregate.bucket_start).astimezone(ZURICH)
+        key = hour_key(bucket_local)
+        if key not in anchors:
+            anchors[key] = aggregate.energy_today_kwh
+            anchor_buckets[key] = aggregate.bucket_start
+    current_hour = now_local.replace(minute=0, second=0, microsecond=0)
+    previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
+    context = FactContext(
+        now_local=now_local,
+        sunrise=sun.sunrise if sun else None,
+        sunset=sun.sunset if sun else None,
+        today_energy_kwh=today_energy_kwh,
+        yesterday_energy_kwh=yesterday_energy,
+        solar_power_kw=solar_power_kw,
+        weather_code=sun.weather_code if sun else None,
+        selection_energy_kwh=anchors.get(hour_key(current_hour)),
+        previous_hour_selection_energy_kwh=anchors.get(hour_key(previous_hour)),
+        selection_energy_by_hour=anchors,
+        selection_bucket_by_hour=anchor_buckets,
+    )
+    return build_story_from_context(context)
+
+
 def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
                     stale_seconds: float = 180.0, sun_result=None,
                     co2_factor: float = 0.128) -> Dict[str, object]:
@@ -109,16 +144,6 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
     day_aggregates = database.aggregates_for_local_day(chart_local_day)
     chart = build_chart(day_aggregates, chart_local_day, now_utc)
 
-    if freshness == "stale":
-        story_1 = "Datenstand {} Uhr".format(local_timestamp.strftime("%H:%M"))
-        story_2 = "Aktualisierung der Solardaten prüfen"
-    elif freshness == "fresh":
-        story_1 = "Live-Daten der Solaranlage"
-        story_2 = "Wetter, Charts und weitere Fakten folgen."
-    else:
-        story_1 = "Keine Solardaten verfügbar"
-        story_2 = "Datenerfassung prüfen"
-
     factor = validate_co2_factor(co2_factor)
     day_yield = daily.energy_today_kwh if daily else None
     co2_savings = max(0.0, day_yield) * factor if day_yield is not None else None
@@ -127,6 +152,15 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
                if sun else None)
     weather_code = sun.weather_code if sun else None
     weather_variant = weather_icon_variant(weather_code)
+    story = build_story(database, now_utc, day_yield, power["solar_power_kw"], sun)
+    if freshness == "stale":
+        story = Story("STALE", "status", "Datenstand {} Uhr".format(local_timestamp.strftime("%H:%M")),
+                      "Aktualisierung der Solardaten prüfen", story.phase,
+                      story.energy_period, story.energy_kwh)
+    elif freshness == "missing":
+        story = Story("MISSING", "status", "Keine Solardaten verfügbar",
+                      "Datenerfassung prüfen", story.phase, story.energy_period,
+                      story.energy_kwh)
     display = dict(power)
     displayed_heat = max(0.0, power["heat_power_kw"] or 0.0)
     display.update({
@@ -143,7 +177,7 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "sunset": sun.sunset.strftime("%H:%M") if sun else None,
         "weather_icon_variant": weather_variant,
         "co2_savings_kg": co2_savings,
-        "story_line_1": story_1, "story_line_2": story_2,
+        "story_line_1": story.line_1, "story_line_2": story.line_2,
         "day_yield_kwh": day_yield,
         "self_consumption_percent": _self_consumption(
             database.aggregates_for_local_day(local_day)
@@ -161,6 +195,17 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "power_selection_reason": selection_reason,
         "power_bucket_count": len(rows),
         "daily_energy": ({"source": daily.source, "complete": daily.complete} if daily else None),
+        "story_status": {
+            "fact_id": story.fact_id, "family": story.family, "phase": story.phase,
+            "energy_period": story.energy_period, "energy_kwh": story.energy_kwh,
+            "used_short_template": story.used_short_template,
+            "line_1_width_px": story.line_1_width_px,
+            "line_2_width_px": story.line_2_width_px,
+            "selection_energy_kwh": story.selection_energy_kwh,
+            "previous_hour_selection_energy_kwh": story.previous_hour_selection_energy_kwh,
+            "selection_hour": story.selection_hour,
+            "selection_bucket_start": story.selection_bucket_start,
+        },
         "sun_data_status": sun_result.status if sun_result else "missing",
         "sun_data_source": sun_result.source if sun_result else "none",
         "sun_data_fetched_at": sun.fetched_at.isoformat() if sun else None,
