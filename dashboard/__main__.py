@@ -11,6 +11,7 @@ from solar_data.storage import SolarDatabase
 from sun_data import get_sun_data
 from .live_view import build_live_view, validate_co2_factor
 from .publisher import publish_view
+from .health import check_health, format_health_text
 
 
 def _positive(value):
@@ -39,6 +40,8 @@ def parser():
     commands = result.add_subparsers(dest="command", required=True)
     commands.add_parser("once")
     commands.add_parser("status")
+    health = commands.add_parser("health")
+    health.add_argument("--text", action="store_true")
     loop = commands.add_parser("loop")
     loop.add_argument("--interval", type=_positive, default=float(os.environ.get("DASHBOARD_REFRESH_SECONDS", "300")))
     return result
@@ -57,6 +60,15 @@ def main():
         factor = validate_co2_factor(os.environ.get("CO2_AVOIDED_KG_PER_KWH", "0.128"))
         refresh = _positive(os.environ.get("SUN_DATA_REFRESH_SECONDS", "1800"))
         max_age = _positive(os.environ.get("SUN_DATA_MAX_AGE_SECONDS", "21600"))
+        if args.command == "health":
+            report, exit_code = check_health(
+                args.db_path, args.output, stale_seconds=args.stale_seconds,
+                refresh_seconds=_positive(os.environ.get("DASHBOARD_REFRESH_SECONDS", "300")),
+                sun_cache=args.sun_cache, sun_refresh_seconds=refresh,
+                sun_max_age_seconds=max_age, co2_factor=factor)
+            print(format_health_text(report) if args.text else
+                  json.dumps(report, separators=(",", ":"), ensure_ascii=False))
+            return exit_code
         coordinates = _sun_coordinates(os.environ)
 
         def make_view(database):

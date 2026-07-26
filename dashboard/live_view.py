@@ -189,7 +189,8 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
 
 def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
                     stale_seconds: float = 180.0, sun_result=None,
-                    co2_factor: float = 0.128) -> Dict[str, object]:
+                    co2_factor: float = 0.128,
+                    persist_fact_selection: bool = True) -> Dict[str, object]:
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
@@ -237,7 +238,8 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
     weather_code = sun.weather_code if sun else None
     weather_variant = weather_icon_variant(weather_code)
     story = build_story(database, now_utc, day_yield, power["solar_power_kw"], sun,
-                        persist_selection=freshness == "fresh")
+                        persist_selection=(freshness == "fresh" and
+                                           persist_fact_selection))
     if freshness == "stale":
         story = Story("STALE", "status", "Datenstand {} Uhr".format(local_timestamp.strftime("%H:%M")),
                       "Aktualisierung der Solardaten prüfen", story.phase,
