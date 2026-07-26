@@ -1,5 +1,5 @@
 import hashlib
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 from .catalog import FACTS
 from .formatting import format_fact_number
@@ -79,21 +79,25 @@ def _special(context, phase, period, energy):
     return None
 
 
-def _ordered_facts(local_date, hour):
+def hour_key(local_hour):
+    return (f"{local_hour.date().isoformat()}:{local_hour.hour:02d}:"
+            f"{local_hour.fold}")
+
+
+def _ordered_facts(local_hour):
     """Return a fair, fully hashed order independent of energy ranges."""
-    date_text = local_date.isoformat()
     return sorted(FACTS, key=lambda fact: _digest(
-        f"{date_text}:{hour:02d}:{fact.fact_id}"
+        f"{hour_key(local_hour)}:{fact.fact_id}"
     ))
 
 
-def select_fact_for_hour(context, hour, selection_energy, display_energy,
+def select_fact_for_hour(context, local_hour, selection_energy, display_energy,
                          excluded_family=None, excluded_id=None):
     if selection_energy is None or selection_energy < .1 or display_energy is None:
         return None
     period = "heutigen" if determine_phase(context)[1] == "today" else "gestrigen"
     candidates = []
-    for fact in _ordered_facts(context.now_local.date(), hour):
+    for fact in _ordered_facts(local_hour):
         if not fact.min_kwh <= selection_energy <= fact.max_kwh:
             continue
         rendered = _render(fact, display_energy, period)
@@ -106,6 +110,33 @@ def select_fact_for_hour(context, hour, selection_energy, display_energy,
     return candidates[0] if candidates and excluded_family is None and excluded_id is None else None
 
 
+def _local_hours_through(current_hour):
+    """Enumerate real instants, retaining both folds of the autumn hour."""
+    midnight = current_hour.replace(hour=0, fold=0)
+    instant = midnight.astimezone(timezone.utc)
+    end = current_hour.astimezone(timezone.utc)
+    result = []
+    while instant <= end:
+        result.append(instant.astimezone(current_hour.tzinfo))
+        instant += timedelta(hours=1)
+    return result
+
+
+def build_hourly_fact_plan(context, local_hours, selection_energy_by_hour):
+    previous = None
+    result = {}
+    for local_hour in local_hours:
+        selection_energy = selection_energy_by_hour.get(hour_key(local_hour))
+        selected = select_fact_for_hour(
+            context, local_hour, selection_energy, selection_energy,
+            excluded_family=previous[0].family if previous else None,
+            excluded_id=previous[0].fact_id if previous else None,
+        )
+        result[hour_key(local_hour)] = selected
+        previous = selected
+    return result
+
+
 def build_story_from_context(context):
     phase, period = determine_phase(context)
     energy = context.today_energy_kwh if period == "today" else context.yesterday_energy_kwh
@@ -114,27 +145,40 @@ def build_story_from_context(context):
         fact_id, lines = special
         return _story(fact_id, "status", lines, phase, period, energy)
     if energy is not None and energy >= .1:
-        hour = context.now_local.hour
-        selection_energy = (context.selection_energy_kwh if period == "today"
-                            else energy)
-        previous_energy = (context.previous_hour_selection_energy_kwh
-                           if period == "today" else energy)
-        previous = select_fact_for_hour(
-            context, (hour - 1) % 24, previous_energy, previous_energy
+        local_hour = context.now_local.replace(minute=0, second=0, microsecond=0)
+        anchors = dict(context.selection_energy_by_hour)
+        if not anchors and context.selection_energy_kwh is not None:
+            anchors[hour_key(local_hour)] = context.selection_energy_kwh
+            previous_hour = (local_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(
+                local_hour.tzinfo)
+            anchors[hour_key(previous_hour)] = context.previous_hour_selection_energy_kwh
+        if period != "today":
+            anchors = {hour_key(item): energy for item in _local_hours_through(local_hour)}
+        plan = build_hourly_fact_plan(
+            context, _local_hours_through(local_hour), anchors
         )
-        selected = select_fact_for_hour(
-            context, hour, selection_energy, energy,
-            excluded_family=previous[0].family if previous else None,
-            excluded_id=previous[0].fact_id if previous else None,
-        )
+        selected = plan.get(hour_key(local_hour))
         if selected:
-            fact, (lines, short) = selected
-            return _story(fact.fact_id, fact.family, lines, phase, period, energy, short)
+            fact = selected[0]
+            rendered = _render(fact, energy, "heutigen" if period == "today" else "gestrigen")
+            if rendered:
+                lines, short = rendered
+                previous_hour = (local_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(
+                    local_hour.tzinfo)
+                return _story(
+                    fact.fact_id, fact.family, lines, phase, period, energy, short,
+                    anchors.get(hour_key(local_hour)), anchors.get(hour_key(previous_hour)),
+                    local_hour.isoformat(),
+                    context.selection_bucket_by_hour.get(hour_key(local_hour)),
+                )
     seed = f"{context.now_local.date()}:{context.now_local.hour:02d}:{phase}:0.0"
     lines = FALLBACKS[_digest(seed) % len(FALLBACKS)]
     return _story("TECH", "technical", lines, phase, period, energy)
 
 
-def _story(fact_id, family, lines, phase, period, energy, short=False):
+def _story(fact_id, family, lines, phase, period, energy, short=False,
+           selection_energy=None, previous_energy=None, selection_hour=None,
+           selection_bucket=None):
     return Story(fact_id, family, lines[0], lines[1], phase, period, energy, short,
-                 text_width_px(lines[0]), text_width_px(lines[1]))
+                 text_width_px(lines[0]), text_width_px(lines[1]), selection_energy,
+                 previous_energy, selection_hour, selection_bucket)

@@ -290,7 +290,8 @@ class SolarDatabase:
         ) for row in rows]
 
     def first_completed_aggregate_for_local_hour(
-            self, local_hour: datetime) -> Optional[Aggregate5m]:
+            self, local_hour: datetime,
+            minimum_energy_kwh: Optional[float] = None) -> Optional[Aggregate5m]:
         """Return the first persisted bucket in a Zurich-local clock hour."""
         if local_hour.tzinfo is None or local_hour.utcoffset() is None:
             raise ValueError("local_hour must be timezone-aware")
@@ -298,11 +299,16 @@ class SolarDatabase:
         # Advance in UTC so each fold of the repeated autumn hour remains a
         # distinct one-hour interval.
         end = start.astimezone(UTC) + timedelta(hours=1)
+        minimum_clause = (" AND energy_today_kwh >= ?"
+                          if minimum_energy_kwh is not None else "")
+        parameters = [_utc_text(start), _utc_text(end)]
+        if minimum_energy_kwh is not None:
+            parameters.append(minimum_energy_kwh)
         row = self.connection.execute(
             """SELECT * FROM aggregates_5m
                WHERE bucket_start_utc >= ? AND bucket_start_utc < ?
-               ORDER BY bucket_start_utc LIMIT 1""",
-            (_utc_text(start), _utc_text(end)),
+            """ + minimum_clause + " ORDER BY bucket_start_utc LIMIT 1",
+            parameters,
         ).fetchone()
         if row is None:
             return None

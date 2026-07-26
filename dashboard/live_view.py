@@ -6,7 +6,7 @@ from solar_data.storage import POWER_FIELDS, SolarDatabase, _aware_utc
 from solar_data.timezones import ZURICH
 from .chart import build_chart
 from .weather import weather_icon_variant
-from .facts import FactContext, Story, build_story_from_context
+from .facts import FactContext, Story, build_story_from_context, hour_key
 
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 MONTHS = ("", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember")
@@ -74,10 +74,18 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None):
     now_local = now.astimezone(ZURICH)
     yesterday = database.daily_energy(now_local.date() - timedelta(days=1))
     yesterday_energy = yesterday.energy_today_kwh if yesterday and yesterday.energy_today_kwh >= 0 else None
-    current_anchor = database.first_completed_aggregate_for_local_hour(now_local)
-    previous_anchor = database.first_completed_aggregate_for_local_hour(
-        now_local - timedelta(hours=1)
-    )
+    anchors = {}
+    anchor_buckets = {}
+    for aggregate in database.aggregates_for_local_day(now_local.date()):
+        if aggregate.energy_today_kwh < .1:
+            continue
+        bucket_local = _aware_utc(aggregate.bucket_start).astimezone(ZURICH)
+        key = hour_key(bucket_local)
+        if key not in anchors:
+            anchors[key] = aggregate.energy_today_kwh
+            anchor_buckets[key] = aggregate.bucket_start
+    current_hour = now_local.replace(minute=0, second=0, microsecond=0)
+    previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
     context = FactContext(
         now_local=now_local,
         sunrise=sun.sunrise if sun else None,
@@ -86,10 +94,10 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None):
         yesterday_energy_kwh=yesterday_energy,
         solar_power_kw=solar_power_kw,
         weather_code=sun.weather_code if sun else None,
-        selection_energy_kwh=(current_anchor.energy_today_kwh if current_anchor else None),
-        previous_hour_selection_energy_kwh=(
-            previous_anchor.energy_today_kwh if previous_anchor else None
-        ),
+        selection_energy_kwh=anchors.get(hour_key(current_hour)),
+        previous_hour_selection_energy_kwh=anchors.get(hour_key(previous_hour)),
+        selection_energy_by_hour=anchors,
+        selection_bucket_by_hour=anchor_buckets,
     )
     return build_story_from_context(context)
 
@@ -192,6 +200,10 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
             "used_short_template": story.used_short_template,
             "line_1_width_px": story.line_1_width_px,
             "line_2_width_px": story.line_2_width_px,
+            "selection_energy_kwh": story.selection_energy_kwh,
+            "previous_hour_selection_energy_kwh": story.previous_hour_selection_energy_kwh,
+            "selection_hour": story.selection_hour,
+            "selection_bucket_start": story.selection_bucket_start,
         },
         "sun_data_status": sun_result.status if sun_result else "missing",
         "sun_data_source": sun_result.source if sun_result else "none",

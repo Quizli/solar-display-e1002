@@ -2,8 +2,9 @@ import unittest
 from datetime import datetime
 
 from dashboard.facts.catalog import FACTS, FACTS_BY_ID, render_d01
-from dashboard.facts.engine import (_render, build_story_from_context,
-                                    determine_phase, select_fact_for_hour)
+from dashboard.facts.engine import (_render, build_hourly_fact_plan,
+                                    build_story_from_context, determine_phase,
+                                    hour_key, select_fact_for_hour)
 from dashboard.facts.formatting import format_fact_number
 from dashboard.facts.models import FactContext
 from solar_data.timezones import ZURICH
@@ -14,14 +15,22 @@ class FactsEngineTest(unittest.TestCase):
 
     def context(self, hour=12, today=25, yesterday=20, power=1,
                 sunrise_hour=6, sunset_hour=21, weather=None, day=25,
-                selection_energy=_AUTO, previous_selection_energy=_AUTO):
+                selection_energy=_AUTO, previous_selection_energy=_AUTO,
+                anchors=None):
         now = datetime(2026, 7, day, hour, tzinfo=ZURICH)
         sunrise = now.replace(hour=sunrise_hour) if sunrise_hour is not None else None
         sunset = now.replace(hour=sunset_hour) if sunset_hour is not None else None
         selection = today if selection_energy is self._AUTO else selection_energy
         previous = selection if previous_selection_energy is self._AUTO else previous_selection_energy
         return FactContext(now, sunrise, sunset, today, yesterday, power, weather,
-                           selection, previous)
+                           selection, previous, anchors or {})
+
+    def anchored_context(self, day, hour, anchors, today=None):
+        now = datetime(2026, 7, day, hour, tzinfo=ZURICH)
+        mapping = {hour_key(now.replace(hour=item_hour, minute=0)): energy
+                   for item_hour, energy in anchors.items()}
+        return self.context(day=day, hour=hour, today=today or anchors[hour],
+                            selection_energy=anchors.get(hour), anchors=mapping)
 
     def test_daily_phases_and_energy_periods(self):
         cases = (
@@ -112,7 +121,8 @@ class FactsEngineTest(unittest.TestCase):
     def test_current_and_previous_hours_use_their_own_anchors(self):
         context = self.context(today=55, selection_energy=55,
                                previous_selection_energy=24)
-        previous = select_fact_for_hour(context, 11, 24, 24)
+        previous_hour = context.now_local.replace(hour=11, minute=0)
+        previous = select_fact_for_hour(context, previous_hour, 24, 24)
         story = build_story_from_context(context)
         self.assertIsNotNone(previous)
         self.assertNotEqual(story.fact_id, previous[0].fact_id)
@@ -124,6 +134,44 @@ class FactsEngineTest(unittest.TestCase):
             previous_selection_energy=24,
         ))
         self.assertEqual(story.fact_id, "TECH")
+
+    def test_known_july_first_sequence_uses_actual_plan_predecessor(self):
+        anchors = {hour: 1 for hour in range(6, 14)}
+        story_12 = build_story_from_context(self.anchored_context(1, 12, anchors))
+        story_13 = build_story_from_context(self.anchored_context(1, 13, anchors))
+        self.assertNotEqual(story_12.fact_id, story_13.fact_id)
+        self.assertNotEqual(story_12.family, story_13.family)
+
+    def test_sequential_plans_avoid_adjacency_across_days_and_energies(self):
+        for day in range(1, 15):
+            for energy in (1, 5, 10, 25, 50, 75, 100, 121, 150):
+                anchors = {hour: energy for hour in range(6, 24)}
+                stories = [build_story_from_context(
+                    self.anchored_context(day, hour, anchors)
+                ) for hour in range(6, 24)]
+                for previous, current in zip(stories, stories[1:]):
+                    if previous.family != "technical" and current.family != "technical":
+                        self.assertNotEqual(previous.fact_id, current.fact_id)
+                        self.assertNotEqual(previous.family, current.family)
+
+    def test_plan_uses_each_hours_real_anchor(self):
+        anchors = {8: 1, 9: 5, 10: 10, 11: 25, 12: 50, 13: 75}
+        context = self.anchored_context(25, 13, anchors)
+        hours = [context.now_local.replace(hour=hour, minute=0) for hour in anchors]
+        plan = build_hourly_fact_plan(context, hours, context.selection_energy_by_hour)
+        for local_hour in hours:
+            fact, _ = plan[hour_key(local_hour)]
+            energy = anchors[local_hour.hour]
+            self.assertLessEqual(fact.min_kwh, energy)
+            self.assertGreaterEqual(fact.max_kwh, energy)
+
+    def test_midnight_and_folds_have_distinct_hour_keys(self):
+        previous = datetime(2026, 7, 25, 23, tzinfo=ZURICH)
+        current = datetime(2026, 7, 26, 0, tzinfo=ZURICH)
+        self.assertNotEqual(hour_key(previous), hour_key(current))
+        autumn_0 = datetime(2026, 10, 25, 2, tzinfo=ZURICH, fold=0)
+        autumn_1 = datetime(2026, 10, 25, 2, tzinfo=ZURICH, fold=1)
+        self.assertNotEqual(hour_key(autumn_0), hour_key(autumn_1))
 
     def test_energy_ranges_filter_catalog(self):
         at_five = {fact.fact_id for fact in FACTS if fact.min_kwh <= 5 <= fact.max_kwh}
