@@ -7,7 +7,10 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from dashboard.live_view import build_live_view
+from dashboard.live_view import build_live_view, build_story
+from dashboard.facts.catalog import FACTS
+from dashboard.facts import hour_key
+from solar_data.timezones import ZURICH
 from dashboard.live_view import validate_co2_factor
 from dashboard.chart import power_y
 from dashboard.__main__ import _positive, _sun_coordinates
@@ -183,6 +186,17 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(stale["freshness"], "stale")
         self.assertIn("Datenstand", stale["display"]["story_line_1"])
 
+    def test_stale_dashboard_does_not_persist_eligible_catalog_fact(self):
+        stale_snapshot = self.now - timedelta(minutes=4)
+        self.snapshot(stale_snapshot, energy_today=5)
+        self.aggregate(self.now.replace(minute=0), 1, 1, 0, 0, 0, 1, energy=5)
+
+        status = build_live_view(self.db, self.now)
+
+        self.assertEqual(status["story_status"]["fact_id"], "STALE")
+        self.assertEqual(self.db.connection.execute(
+            "SELECT COUNT(*) FROM fact_history").fetchone()[0], 0)
+
     def test_story_uses_first_fact_eligible_morning_bucket_as_anchor(self):
         now = datetime(2026, 7, 25, 4, 45, tzinfo=timezone.utc)  # 06:45 Zurich
         baseline = datetime(2026, 7, 24, 21, 55, tzinfo=timezone.utc)
@@ -199,15 +213,68 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(status["energy_period"], "today")
         self.assertEqual(status["selection_energy_kwh"], 1.1)
         self.assertEqual(status["selection_bucket_start"], _utc_text(anchor_start))
+        self.assertTrue(status["selection_persisted"])
+        self.assertEqual(status["selection_source"], "new")
+        stored = self.db.get_fact_selection(hour_key(now.astimezone(ZURICH)))
+        self.assertEqual(stored.fact_id, status["fact_id"])
 
         later_time = now + timedelta(minutes=1)
         self.snapshot(later_time, energy_today=2.4, energy_total=1002.4)
         later = build_live_view(self.db, later_time)
         self.assertEqual(later["story_status"]["fact_id"], status["fact_id"])
+        self.assertEqual(later["story_status"]["selection_source"], "persisted")
         self.assertNotEqual(
             (later["display"]["story_line_1"], later["display"]["story_line_2"]),
             (first["display"]["story_line_1"], first["display"]["story_line_2"]),
         )
+
+    def test_fact_selection_survives_database_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "solar.db")
+            now = datetime(2026, 7, 25, 10, 5, tzinfo=timezone.utc)
+            database = SolarDatabase(path)
+            database.connection.execute("INSERT INTO aggregates_5m VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (_utc_text(now.replace(minute=0)), 1, 1, 0, 0, 0, 1, 5, 1, 0, 1))
+            database.connection.commit()
+            first = build_story(database, now, 5, 1)
+            database.close()
+
+            database = SolarDatabase(path)
+            second = build_story(database, now + timedelta(minutes=20), 7, 1)
+            self.assertEqual(second.fact_id, first.fact_id)
+            self.assertEqual(second.selection_energy_kwh, 5)
+            self.assertEqual(second.selection_source, "persisted")
+            self.assertNotEqual((second.line_1, second.line_2),
+                                (first.line_1, first.line_2))
+            database.close()
+
+    def test_new_hours_avoid_used_ids_and_previous_family_then_relax(self):
+        day = datetime(2026, 7, 25, 6, tzinfo=timezone.utc)
+        stories = []
+        for offset in range(4):
+            now = day + timedelta(hours=offset, minutes=5)
+            self.aggregate(now.replace(minute=0), 1, 1, 0, 0, 0, 1, energy=50)
+            stories.append(build_story(self.db, now, 50, 1))
+        self.assertEqual(len({story.fact_id for story in stories}), len(stories))
+        for previous, current in zip(stories, stories[1:]):
+            self.assertNotEqual(current.family, previous.family)
+
+        later = day + timedelta(hours=5, minutes=5)
+        local_later = later.astimezone(ZURICH).replace(minute=0)
+        for fact in FACTS:
+            if fact.min_kwh <= 50 <= fact.max_kwh:
+                prior = local_later - timedelta(days=1)
+                self.db.store_fact_selection(
+                    f"used-{fact.fact_id}", prior, fact.fact_id, fact.family, 50)
+                self.db.connection.execute(
+                    "UPDATE fact_history SET local_day = ? WHERE hour_key = ?",
+                    (local_later.date().isoformat(), f"used-{fact.fact_id}"))
+        self.db.connection.commit()
+        self.aggregate(later.replace(minute=5), 1, 1, 0, 0, 0, 1, energy=50)
+        relaxed = build_story(self.db, later, 50, 1)
+        self.assertNotEqual(relaxed.fact_id, "TECH")
+        self.assertIn(relaxed.fact_id, {story.fact_id for story in stories} |
+                      {fact.fact_id for fact in FACTS if fact.min_kwh <= 50 <= fact.max_kwh})
 
     def test_story_waits_before_first_fact_eligible_morning_bucket(self):
         now = datetime(2026, 7, 25, 4, 25, tzinfo=timezone.utc)
@@ -217,6 +284,9 @@ class DashboardTest(unittest.TestCase):
         view = build_live_view(self.db, now)
         self.assertEqual(view["story_status"]["fact_id"], "TECH")
         self.assertIsNone(view["story_status"]["selection_energy_kwh"])
+        self.assertEqual(view["story_status"]["selection_source"], "none")
+        self.assertEqual(self.db.connection.execute(
+            "SELECT COUNT(*) FROM fact_history").fetchone()[0], 0)
 
     def test_total_counter_repairs_fact_anchor_when_day_energy_is_zero(self):
         now = datetime(2026, 7, 25, 8, 12, tzinfo=timezone.utc)

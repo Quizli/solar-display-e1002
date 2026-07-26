@@ -304,6 +304,44 @@ class StorageTest(unittest.TestCase):
         rows = self.database.aggregates_for_local_day(date(2026, 10, 25))
         self.assertEqual([row.energy_today_kwh for row in rows], [1, 2])
 
+    def test_fact_history_is_idempotent_and_keeps_dst_folds_separate(self):
+        first = datetime(2026, 10, 25, 2, tzinfo=ZURICH, fold=0)
+        second = datetime(2026, 10, 25, 2, tzinfo=ZURICH, fold=1)
+        one = self.database.store_fact_selection(
+            "2026-10-25:02:0", first, "FACT_A", "family_a", 2.5)
+        unchanged = self.database.store_fact_selection(
+            "2026-10-25:02:0", first, "FACT_B", "family_b", 3.5)
+        two = self.database.store_fact_selection(
+            "2026-10-25:02:1", second, "FACT_B", "family_b", 3.5)
+
+        self.assertEqual(unchanged, one)
+        self.assertEqual(one.dst_fold, 0)
+        self.assertEqual(two.dst_fold, 1)
+        self.assertEqual(len(self.database.fact_selections_for_local_day(
+            date(2026, 10, 25))), 2)
+        self.assertEqual(self.database.latest_fact_selection_before(second), one)
+
+    def test_previous_schema_migrates_without_losing_measurements(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "solar.db")
+            database = SolarDatabase(path)
+            database.store_snapshot(snapshot("2026-07-25T08:01:00+00:00"))
+            database.connection.execute("DROP TABLE fact_history")
+            database.connection.execute("DELETE FROM schema_version")
+            database.connection.execute("INSERT INTO schema_version VALUES (2)")
+            database.connection.commit()
+            database.close()
+
+            for _ in range(2):
+                database = SolarDatabase(path)
+                self.assertIsNotNone(database.latest_snapshot())
+                self.assertEqual(database.connection.execute(
+                    "SELECT version FROM schema_version").fetchone()[0], 3)
+                self.assertIsNotNone(database.connection.execute(
+                    "SELECT name FROM sqlite_master WHERE name='fact_history'"
+                ).fetchone())
+                database.close()
+
 
 if __name__ == "__main__":
     unittest.main()
