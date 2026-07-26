@@ -80,23 +80,23 @@ def _special(context, phase, period, energy):
 
 
 def _ordered_facts(local_date, hour):
-    """Return a stable hourly order whose activation tiers never leapfrog."""
+    """Return a fair, fully hashed order independent of energy ranges."""
     date_text = local_date.isoformat()
-    return sorted(FACTS, key=lambda fact: (
-        fact.min_kwh,
-        _digest(f"{date_text}:{hour:02d}:{fact.fact_id}"),
+    return sorted(FACTS, key=lambda fact: _digest(
+        f"{date_text}:{hour:02d}:{fact.fact_id}"
     ))
 
 
-def select_fact_for_hour(context, hour, energy, excluded_family=None, excluded_id=None):
-    if energy is None or energy < .1:
+def select_fact_for_hour(context, hour, selection_energy, display_energy,
+                         excluded_family=None, excluded_id=None):
+    if selection_energy is None or selection_energy < .1 or display_energy is None:
         return None
     period = "heutigen" if determine_phase(context)[1] == "today" else "gestrigen"
     candidates = []
     for fact in _ordered_facts(context.now_local.date(), hour):
-        if not fact.min_kwh <= energy <= fact.max_kwh:
+        if not fact.min_kwh <= selection_energy <= fact.max_kwh:
             continue
-        rendered = _render(fact, energy, period)
+        rendered = _render(fact, display_energy, period)
         if rendered is not None:
             candidates.append((fact, rendered))
     alternatives = [(fact, rendered) for fact, rendered in candidates
@@ -115,18 +115,18 @@ def build_story_from_context(context):
         return _story(fact_id, "status", lines, phase, period, energy)
     if energy is not None and energy >= .1:
         hour = context.now_local.hour
-        # Walk the small (at most 24 item) local-day plan so the exclusion is
-        # based on the fact actually selected for the preceding hour, rather
-        # than merely that hour's unfiltered start position.
-        selected = None
-        previous = None
-        for planned_hour in range(hour + 1):
-            selected = select_fact_for_hour(
-                context, planned_hour, energy,
-                excluded_family=previous[0].family if previous else None,
-                excluded_id=previous[0].fact_id if previous else None,
-            )
-            previous = selected
+        selection_energy = (context.selection_energy_kwh if period == "today"
+                            else energy)
+        previous_energy = (context.previous_hour_selection_energy_kwh
+                           if period == "today" else energy)
+        previous = select_fact_for_hour(
+            context, (hour - 1) % 24, previous_energy, previous_energy
+        )
+        selected = select_fact_for_hour(
+            context, hour, selection_energy, energy,
+            excluded_family=previous[0].family if previous else None,
+            excluded_id=previous[0].fact_id if previous else None,
+        )
         if selected:
             fact, (lines, short) = selected
             return _story(fact.fact_id, fact.family, lines, phase, period, energy, short)

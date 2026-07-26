@@ -2,19 +2,26 @@ import unittest
 from datetime import datetime
 
 from dashboard.facts.catalog import FACTS, FACTS_BY_ID, render_d01
-from dashboard.facts.engine import _render, build_story_from_context, determine_phase
+from dashboard.facts.engine import (_render, build_story_from_context,
+                                    determine_phase, select_fact_for_hour)
 from dashboard.facts.formatting import format_fact_number
 from dashboard.facts.models import FactContext
 from solar_data.timezones import ZURICH
 
 
 class FactsEngineTest(unittest.TestCase):
+    _AUTO = object()
+
     def context(self, hour=12, today=25, yesterday=20, power=1,
-                sunrise_hour=6, sunset_hour=21, weather=None):
-        now = datetime(2026, 7, 25, hour, tzinfo=ZURICH)
+                sunrise_hour=6, sunset_hour=21, weather=None, day=25,
+                selection_energy=_AUTO, previous_selection_energy=_AUTO):
+        now = datetime(2026, 7, day, hour, tzinfo=ZURICH)
         sunrise = now.replace(hour=sunrise_hour) if sunrise_hour is not None else None
         sunset = now.replace(hour=sunset_hour) if sunset_hour is not None else None
-        return FactContext(now, sunrise, sunset, today, yesterday, power, weather)
+        selection = today if selection_energy is self._AUTO else selection_energy
+        previous = selection if previous_selection_energy is self._AUTO else previous_selection_energy
+        return FactContext(now, sunrise, sunset, today, yesterday, power, weather,
+                           selection, previous)
 
     def test_daily_phases_and_energy_periods(self):
         cases = (
@@ -52,8 +59,8 @@ class FactsEngineTest(unittest.TestCase):
         for before, after in ((.9, 1.1), (4.9, 5.1), (9.9, 10.1),
                               (24.9, 25.1), (49.9, 50.1), (99.9, 100.1),
                               (119.9, 120.1)):
-            first = build_story_from_context(self.context(today=before))
-            later = build_story_from_context(self.context(today=after))
+            first = build_story_from_context(self.context(today=before, selection_energy=before))
+            later = build_story_from_context(self.context(today=after, selection_energy=before))
             selected = FACTS_BY_ID.get(first.fact_id)
             if selected and selected.min_kwh <= after <= selected.max_kwh:
                 with self.subTest(before=before, after=after, fact=first.fact_id):
@@ -83,6 +90,40 @@ class FactsEngineTest(unittest.TestCase):
         for previous, current in zip(stories, stories[1:]):
             if previous.family != "technical" and current.family != "technical":
                 self.assertNotEqual(previous.fact_id, current.fact_id)
+
+    def test_higher_minimum_facts_are_reachable(self):
+        selected_ids = {
+            build_story_from_context(self.context(
+                day=day, hour=hour, today=75, selection_energy=75,
+                previous_selection_energy=70,
+            )).fact_id
+            for day in range(1, 15) for hour in range(8, 20)
+        }
+        expected = {"D02", "M03", "V01", "V03", "V09", "U01", "U02",
+                    "X03", "X11", "CMB07"}
+        self.assertTrue(expected <= selected_ids, expected - selected_ids)
+
+    def test_anchor_keeps_id_stable_while_display_value_changes(self):
+        first = build_story_from_context(self.context(today=54.3, selection_energy=54.3))
+        later = build_story_from_context(self.context(today=78.9, selection_energy=54.3))
+        self.assertEqual(first.fact_id, later.fact_id)
+        self.assertNotEqual((first.line_1, first.line_2), (later.line_1, later.line_2))
+
+    def test_current_and_previous_hours_use_their_own_anchors(self):
+        context = self.context(today=55, selection_energy=55,
+                               previous_selection_energy=24)
+        previous = select_fact_for_hour(context, 11, 24, 24)
+        story = build_story_from_context(context)
+        self.assertIsNotNone(previous)
+        self.assertNotEqual(story.fact_id, previous[0].fact_id)
+        self.assertNotEqual(story.family, previous[0].family)
+
+    def test_missing_current_hour_anchor_uses_transition_fallback(self):
+        story = build_story_from_context(self.context(
+            hour=12, today=55, selection_energy=None,
+            previous_selection_energy=24,
+        ))
+        self.assertEqual(story.fact_id, "TECH")
 
     def test_energy_ranges_filter_catalog(self):
         at_five = {fact.fact_id for fact in FACTS if fact.min_kwh <= 5 <= fact.max_kwh}

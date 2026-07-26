@@ -15,6 +15,8 @@ class FactContext:
     yesterday_energy_kwh: Optional[float]
     solar_power_kw: Optional[float]
     weather_code: Optional[int]
+    selection_energy_kwh: Optional[float] = None
+    previous_hour_selection_energy_kwh: Optional[float] = None
 
 
 @dataclass(frozen=True)

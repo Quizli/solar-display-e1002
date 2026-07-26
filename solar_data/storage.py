@@ -289,6 +289,33 @@ class SolarDatabase:
             heat_available=bool(row["heat_available"]),
         ) for row in rows]
 
+    def first_completed_aggregate_for_local_hour(
+            self, local_hour: datetime) -> Optional[Aggregate5m]:
+        """Return the first persisted bucket in a Zurich-local clock hour."""
+        if local_hour.tzinfo is None or local_hour.utcoffset() is None:
+            raise ValueError("local_hour must be timezone-aware")
+        start = local_hour.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
+        # Advance in UTC so each fold of the repeated autumn hour remains a
+        # distinct one-hour interval.
+        end = start.astimezone(UTC) + timedelta(hours=1)
+        row = self.connection.execute(
+            """SELECT * FROM aggregates_5m
+               WHERE bucket_start_utc >= ? AND bucket_start_utc < ?
+               ORDER BY bucket_start_utc LIMIT 1""",
+            (_utc_text(start), _utc_text(end)),
+        ).fetchone()
+        if row is None:
+            return None
+        return Aggregate5m(
+            bucket_start=row["bucket_start_utc"],
+            **{field: row[field] for field in POWER_FIELDS},
+            battery_soc_pct=row["battery_soc_pct"],
+            energy_today_kwh=row["energy_today_kwh"],
+            sample_count=row["sample_count"],
+            battery_available=bool(row["battery_available"]),
+            heat_available=bool(row["heat_available"]),
+        )
+
     def daily_energy(self, local_day: date) -> DailyEnergy:
         """Derive a Zurich-local day's yield from the counter or power buckets."""
         local_start = datetime.combine(local_day, datetime.min.time(), tzinfo=ZURICH)

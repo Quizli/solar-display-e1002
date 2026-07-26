@@ -74,6 +74,10 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None):
     now_local = now.astimezone(ZURICH)
     yesterday = database.daily_energy(now_local.date() - timedelta(days=1))
     yesterday_energy = yesterday.energy_today_kwh if yesterday and yesterday.energy_today_kwh >= 0 else None
+    current_anchor = database.first_completed_aggregate_for_local_hour(now_local)
+    previous_anchor = database.first_completed_aggregate_for_local_hour(
+        now_local - timedelta(hours=1)
+    )
     context = FactContext(
         now_local=now_local,
         sunrise=sun.sunrise if sun else None,
@@ -82,6 +86,10 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None):
         yesterday_energy_kwh=yesterday_energy,
         solar_power_kw=solar_power_kw,
         weather_code=sun.weather_code if sun else None,
+        selection_energy_kwh=(current_anchor.energy_today_kwh if current_anchor else None),
+        previous_hour_selection_energy_kwh=(
+            previous_anchor.energy_today_kwh if previous_anchor else None
+        ),
     )
     return build_story_from_context(context)
 
