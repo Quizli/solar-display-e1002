@@ -85,13 +85,20 @@ def bucket_start(value: datetime) -> datetime:
 
 
 class SolarDatabase:
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, read_only: bool = False) -> None:
         self.path = path
-        if path != ":memory:":
+        if read_only and path == ":memory:":
+            raise ValueError("an in-memory database cannot be opened read-only")
+        if path != ":memory:" and not read_only:
             Path(path).expanduser().parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(path)
+        if read_only:
+            uri = Path(path).expanduser().resolve().as_uri() + "?mode=ro"
+            self.connection = sqlite3.connect(uri, uri=True)
+        else:
+            self.connection = sqlite3.connect(path)
         self.connection.row_factory = sqlite3.Row
-        self.initialize()
+        if not read_only:
+            self.initialize()
 
     def __enter__(self):
         return self

@@ -175,10 +175,15 @@ Lokale Befehle verwenden standardmäßig `data/solar.db` und
 ```bash
 python3 -m dashboard once
 python3 -m dashboard status
+python3 -m dashboard health
+python3 -m dashboard health --text
 python3 -m dashboard loop
 ```
 
-`status` schreibt nur das abgeleitete JSON-Modell. `once` publiziert atomar;
+`status` schreibt nur das abgeleitete JSON-Modell. `health` prüft Datenbank,
+Datenfrische, Modell und publiziertes SVG ohne Netzwerkzugriff oder Schreibzugriffe;
+kompaktes JSON ist der Default, `--text` die lesbare Betriebsansicht. Die Exit-Codes
+sind 0 (healthy), 1 (degraded) und 2 (unhealthy). `once` publiziert atomar;
 bei fehlenden Daten oder einem Renderfehler bleibt das letzte gute SVG erhalten.
 `SOLAR_DB_PATH`, `DASHBOARD_OUTPUT_PATH`, `DASHBOARD_REFRESH_SECONDS` und
 `DASHBOARD_STALE_SECONDS` überschreiben die Defaults.
@@ -226,16 +231,19 @@ docker compose up -d --build
 ```
 
 Das Dashboard ist anschließend unter
-`http://<NAS-IP>:8088/dashboard.svg` erreichbar. Diagnose:
+`http://<NAS-IP>:8088/dashboard.svg` erreichbar. Der produktive Ablauf für
+Deployment, Backup, Restore und Fehlersuche steht im [Operations-Handbuch](docs/OPERATIONS.md).
+Diagnose:
 
 ```bash
 sudo docker compose logs --tail=50 dashboard-publisher
 sudo docker compose exec dashboard-publisher python3 -m dashboard status
 ```
 
-Allgemeine Wetterdaten, Temperatur, Niederschlagsmengen,
-wechselnde Facts, historische Sonnenstunden und eine direkte E1002-Upload-API
-sind bewusst nicht Teil dieser Etappe.
+Allgemeine Wetterdaten, Temperatur, Niederschlagsmengen, historische
+Sonnenstunden und eine direkte E1002-Upload-API sind nicht Bestandteil.
+Fact-Auswahlen werden dagegen pro lokaler Stunde dauerhaft gespeichert; zusätzlich
+können nach mehreren abgeschlossenen Tagen historische Ertragsvergleiche erscheinen.
 
 ### Docker-Build-Kontext und Dateirechte
 
