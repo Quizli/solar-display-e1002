@@ -39,6 +39,9 @@ class Story:
     selection_bucket_start: Optional[str] = None
     selection_persisted: bool = False
     selection_source: str = "none"
+    historical_fact: bool = False
+    historical_reference_day: Optional[str] = None
+    historical_baseline_kwh: Optional[float] = None
 
 
 @dataclass(frozen=True)

@@ -336,7 +336,9 @@ class StorageTest(unittest.TestCase):
                 database = SolarDatabase(path)
                 self.assertIsNotNone(database.latest_snapshot())
                 self.assertEqual(database.connection.execute(
-                    "SELECT version FROM schema_version").fetchone()[0], 3)
+                    "SELECT version FROM schema_version").fetchone()[0], 4)
+                self.assertIn("context_json", {row[1] for row in database.connection.execute(
+                    "PRAGMA table_info(fact_history)")})
                 self.assertIsNotNone(database.connection.execute(
                     "SELECT name FROM sqlite_master WHERE name='fact_history'"
                 ).fetchone())
