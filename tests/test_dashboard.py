@@ -186,6 +186,17 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(stale["freshness"], "stale")
         self.assertIn("Datenstand", stale["display"]["story_line_1"])
 
+    def test_stale_dashboard_does_not_persist_eligible_catalog_fact(self):
+        stale_snapshot = self.now - timedelta(minutes=4)
+        self.snapshot(stale_snapshot, energy_today=5)
+        self.aggregate(self.now.replace(minute=0), 1, 1, 0, 0, 0, 1, energy=5)
+
+        status = build_live_view(self.db, self.now)
+
+        self.assertEqual(status["story_status"]["fact_id"], "STALE")
+        self.assertEqual(self.db.connection.execute(
+            "SELECT COUNT(*) FROM fact_history").fetchone()[0], 0)
+
     def test_story_uses_first_fact_eligible_morning_bucket_as_anchor(self):
         now = datetime(2026, 7, 25, 4, 45, tzinfo=timezone.utc)  # 06:45 Zurich
         baseline = datetime(2026, 7, 24, 21, 55, tzinfo=timezone.utc)
