@@ -1,4 +1,5 @@
 import hashlib
+from dataclasses import replace
 from datetime import timedelta, timezone
 
 from .catalog import FACTS
@@ -108,6 +109,34 @@ def select_fact_for_hour(context, local_hour, selection_energy, display_energy,
     if alternatives:
         return alternatives[0]
     return candidates[0] if candidates and excluded_family is None and excluded_id is None else None
+
+
+def eligible_facts_for_hour(context, local_hour, selection_energy, display_energy):
+    """Return renderable catalogue candidates in the established deterministic order."""
+    if selection_energy is None or selection_energy < .1 or display_energy is None:
+        return []
+    period = "heutigen" if determine_phase(context)[1] == "today" else "gestrigen"
+    return [(fact, rendered) for fact in _ordered_facts(local_hour)
+            if fact.min_kwh <= selection_energy <= fact.max_kwh
+            for rendered in [_render(fact, display_energy, period)] if rendered]
+
+
+def story_for_catalog_fact(context, fact, selection_energy, previous_energy=None,
+                           selection_bucket=None, persisted=False, source="new"):
+    phase, period = determine_phase(context)
+    energy = context.today_energy_kwh if period == "today" else context.yesterday_energy_kwh
+    if energy is None:
+        return None
+    rendered = _render(fact, energy, "heutigen" if period == "today" else "gestrigen")
+    if rendered is None:
+        return None
+    lines, short = rendered
+    local_hour = context.now_local.replace(minute=0, second=0, microsecond=0)
+    story = _story(fact.fact_id, fact.family, lines, phase, period, energy, short,
+                   selection_energy, previous_energy, local_hour.isoformat(),
+                   selection_bucket)
+    return replace(story, selection_persisted=persisted,
+                   selection_source=source)
 
 
 def _local_hours_through(current_hour):

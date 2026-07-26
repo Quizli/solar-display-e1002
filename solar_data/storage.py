@@ -41,6 +41,19 @@ class DailyEnergy:
     complete: bool
 
 
+@dataclass(frozen=True)
+class FactSelection:
+    hour_key: str
+    local_day: str
+    local_hour: str
+    dst_fold: int
+    fact_id: str
+    family: str
+    selection_energy_kwh: Optional[float]
+    selection_bucket_start: Optional[str]
+    created_at_utc: str
+
+
 def _aware_utc(value: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -119,6 +132,17 @@ class SolarDatabase:
                     battery_available INTEGER NOT NULL CHECK (battery_available IN (0, 1)),
                     heat_available INTEGER NOT NULL CHECK (heat_available IN (0, 1))
                 );
+                CREATE TABLE IF NOT EXISTS fact_history (
+                    hour_key TEXT PRIMARY KEY,
+                    local_day TEXT NOT NULL,
+                    local_hour TEXT NOT NULL,
+                    dst_fold INTEGER NOT NULL CHECK (dst_fold IN (0, 1)),
+                    fact_id TEXT NOT NULL,
+                    family TEXT NOT NULL,
+                    selection_energy_kwh REAL,
+                    selection_bucket_start TEXT,
+                    created_at_utc TEXT NOT NULL
+                );
                 """
             )
             columns = {
@@ -129,7 +153,61 @@ class SolarDatabase:
                     "ALTER TABLE raw_samples ADD COLUMN energy_total_kwh REAL"
                 )
             self.connection.execute("DELETE FROM schema_version")
-            self.connection.execute("INSERT INTO schema_version(version) VALUES (2)")
+            self.connection.execute("INSERT INTO schema_version(version) VALUES (3)")
+
+    @staticmethod
+    def _fact_selection(row) -> Optional[FactSelection]:
+        return FactSelection(**dict(row)) if row is not None else None
+
+    def get_fact_selection(self, hour_key: str) -> Optional[FactSelection]:
+        row = self.connection.execute(
+            "SELECT * FROM fact_history WHERE hour_key = ?", (hour_key,)
+        ).fetchone()
+        return self._fact_selection(row)
+
+    def store_fact_selection(self, hour_key: str, local_hour: datetime,
+                             fact_id: str, family: str,
+                             selection_energy_kwh: Optional[float],
+                             selection_bucket_start: Optional[str] = None,
+                             created_at: Optional[datetime] = None) -> FactSelection:
+        if local_hour.tzinfo is None or local_hour.utcoffset() is None:
+            raise ValueError("local_hour must be timezone-aware")
+        local_hour = local_hour.astimezone(ZURICH).replace(minute=0, second=0,
+                                                           microsecond=0)
+        created_at = created_at or datetime.now(UTC)
+        if selection_bucket_start is not None:
+            selection_bucket_start = _utc_text(_aware_utc(selection_bucket_start))
+        with self.connection:
+            self.connection.execute(
+                """INSERT OR IGNORE INTO fact_history (
+                       hour_key, local_day, local_hour, dst_fold, fact_id, family,
+                       selection_energy_kwh, selection_bucket_start, created_at_utc
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (hour_key, local_hour.date().isoformat(), local_hour.isoformat(),
+                 local_hour.fold, fact_id, family, selection_energy_kwh,
+                 selection_bucket_start, _utc_text(created_at)),
+            )
+        return self.get_fact_selection(hour_key)
+
+    def fact_selections_for_local_day(self, local_day: date) -> List[FactSelection]:
+        rows = self.connection.execute(
+            "SELECT * FROM fact_history WHERE local_day = ? ORDER BY local_hour, dst_fold",
+            (local_day.isoformat(),),
+        ).fetchall()
+        return [self._fact_selection(row) for row in rows]
+
+    def latest_fact_selection_before(self, local_hour: datetime) -> Optional[FactSelection]:
+        if local_hour.tzinfo is None or local_hour.utcoffset() is None:
+            raise ValueError("local_hour must be timezone-aware")
+        target = local_hour.astimezone(UTC)
+        rows = self.connection.execute("SELECT * FROM fact_history").fetchall()
+        earlier = [row for row in rows
+                   if datetime.fromisoformat(row["local_hour"]).astimezone(UTC) < target]
+        if not earlier:
+            return None
+        row = max(earlier, key=lambda item:
+                  datetime.fromisoformat(item["local_hour"]).astimezone(UTC))
+        return self._fact_selection(row)
 
     def store_snapshot(self, snapshot: LiveData) -> bool:
         timestamp = _aware_utc(snapshot.timestamp)

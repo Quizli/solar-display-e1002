@@ -37,6 +37,8 @@ class Story:
     previous_hour_selection_energy_kwh: Optional[float] = None
     selection_hour: Optional[str] = None
     selection_bucket_start: Optional[str] = None
+    selection_persisted: bool = False
+    selection_source: str = "none"
 
 
 @dataclass(frozen=True)
