@@ -63,8 +63,11 @@ def _special(context, phase, period, energy):
         if options:
             return "MORNING", options[_digest(seed) % len(options)]
     if phase == "zero_production_day":
-        if context.weather_code in (3, 45, 48):
+        if context.weather_code == 3:
             return "ZERO_WEATHER", ("Der Morgen ist stark bewölkt.",
+                                    "Auf dem Produktionszähler stehen noch 0,0 kWh.")
+        if context.weather_code in (45, 48):
+            return "ZERO_WEATHER", ("Der Morgen startet heute neblig.",
                                     "Auf dem Produktionszähler stehen noch 0,0 kWh.")
         return "ZERO", ("Die Produktion ist heute noch nicht angelaufen.",
                         "Die Panels könnten etwas mehr Helligkeit vertragen.")
@@ -82,27 +85,24 @@ def build_story_from_context(context):
         rendered = [(fact, _render(fact, energy, "heutigen" if period == "today" else "gestrigen"))
                     for fact in FACTS if fact.min_kwh <= energy <= fact.max_kwh]
         rendered = [(fact, text) for fact, text in rendered if text is not None]
-        # Build the hours up to now as one deterministic plan. This makes daily
-        # uniqueness and adjacent-family exclusion independent of process state.
-        used, previous, selected = set(), None, None
-        for hour in range(context.now_local.hour + 1):
-            choices = [(fact, text) for fact, text in rendered
-                       if fact.fact_id not in used and fact.family != previous]
-            if not choices:
-                break
-            seed = f"{context.now_local.date().isoformat()}:{hour:02d}:{phase}:{round(energy, 1):.1f}"
-            total = sum(f.weight for f, _ in choices)
-            point = (_digest(seed) / (1 << 256)) * total
-            selected = choices[-1]
-            for choice in choices:
-                point -= choice[0].weight
-                if point < 0:
-                    selected = choice
-                    break
-            used.add(selected[0].fact_id)
-            previous = selected[0].family
-        if selected:
-            fact, (lines, short) = selected
+        # The date fixes the catalog order, and the hour fixes only its start
+        # position. Neither depends on the changing yield, so earlier hours are
+        # never recomputed using the current energy or phase.
+        local_date = context.now_local.date().isoformat()
+        ordered = sorted(FACTS, key=lambda fact: _digest(f"{local_date}:{fact.fact_id}"))
+        start_seed = f"{local_date}:{context.now_local.hour:02d}:{phase}"
+        start = _digest(start_seed) % len(ordered)
+        eligible = {fact.fact_id: text for fact, text in rendered}
+        previous_start = _digest(
+            f"{local_date}:{(context.now_local.hour - 1) % 24:02d}:{phase}"
+        ) % len(ordered)
+        previous_family = ordered[previous_start].family
+        candidates = [fact for offset in range(len(ordered))
+                      if (fact := ordered[(start + offset) % len(ordered)]).fact_id in eligible]
+        preferred = [fact for fact in candidates if fact.family != previous_family]
+        if preferred or candidates:
+            fact = (preferred or candidates)[0]
+            lines, short = eligible[fact.fact_id]
             return _story(fact.fact_id, fact.family, lines, phase, period, energy, short)
     seed = f"{context.now_local.date()}:{context.now_local.hour:02d}:{phase}:0.0"
     lines = FALLBACKS[_digest(seed) % len(FALLBACKS)]

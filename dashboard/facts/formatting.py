@@ -27,3 +27,38 @@ def format_fact_number(value, unit_type="count"):
     else:
         rounded = round(value / 100) * 100
     return f"{rounded:,}".replace(",", "’")
+
+
+def format_energy(value):
+    if float(value).is_integer():
+        return str(int(value))
+    return _decimal(value, 1)
+
+
+def _compact(value, places=2):
+    text = f"{value:.{places}f}".rstrip("0").rstrip(".")
+    return text.replace(".", ",")
+
+
+def format_large_count(value):
+    if value >= 1_000_000_000:
+        return f"{_compact(value / 1_000_000_000)} Milliarden"
+    if value >= 1_000_000:
+        return f"{_compact(value / 1_000_000)} Millionen"
+    return format_fact_number(value)
+
+
+def format_hours_as_years(hours):
+    return _compact(hours / (24 * 365), 1)
+
+
+def format_hours_as_days(hours):
+    return format_fact_number(hours / 24)
+
+
+def format_seconds(seconds):
+    return _compact(seconds, 2)
+
+
+def format_percent(percent):
+    return format_fact_number(percent)

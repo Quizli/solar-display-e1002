@@ -1,36 +1,133 @@
-from .formatting import format_fact_number as number
+from .formatting import (format_energy, format_fact_number, format_hours_as_days,
+                         format_hours_as_years, format_large_count,
+                         format_percent, format_seconds)
 from .models import FactDefinition
 
 
-def _fact(fact_id, family, factor, noun, detail, short_noun=None, min_kwh=.1, max_kwh=10000):
-    def normal(energy, period):
-        amount = number(energy * factor)
-        return (f"Der {period} Solarertrag entspricht {amount} {noun}.", detail)
-    def short(energy, period):
-        amount = number(energy * factor)
-        return (f"{amount} {short_noun or noun} dank dem {period} Solarertrag.", detail)
-    return FactDefinition(fact_id, family, min_kwh, max_kwh, 1.0, normal, short)
+def _energy_period(energy, period):
+    return format_energy(energy), period
 
 
-# Fixed physical/everyday approximations. They are intentionally code constants:
-# facts are editorial content, not deployment configuration.
+def render_d01(e, p):
+    # Phone charging is an intentionally approximate comparison; two useful
+    # significant digits avoid implying precision in the 17 Wh model value.
+    value = format_fact_number(round(e / .017, -2))
+    energy, p = _energy_period(e, p)
+    return f"Die {p} {energy} kWh reichen für rund", f"{value} vollständige iPhone-Ladungen."
+
+
+def render_d02(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Die {p} {energy} kWh reichen für rund", f"{format_fact_number(e * 90)} km Instagram-Doomscrolling."
+
+
+def render_k01(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Die {p} {energy} kWh reichen für rund", f"{format_fact_number(e / .015)} Espressi."
+
+
+def render_k03(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Aus den {p} {energy} kWh könnten rund", f"{format_fact_number(e / .005)} Eiswürfel entstehen."
+
+
+def render_k08(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Die {p} {energy} kWh reichen für rund", f"{format_fact_number(e / .30)} Racletteportionen."
+
+
+def render_m01(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Für die {p} {energy} kWh müsste ein Mensch", f"rund {format_fact_number(e / .125)} Stunden Velo fahren."
+
+
+def render_m03(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Für die {p} {energy} kWh wären rund", f"{format_large_count(e * 14_400_000)} Hamsterrad-Runden nötig."
+
+
+def render_v01(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Die {p} {energy} kWh reichen für rund", f"{format_fact_number(e / .007)} km mit dem E-Bike."
+
+
+def render_v03(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Mit den {p} {energy} kWh käme ein Model 3", f"rund {format_fact_number(e / .13)} km weit."
+
+
+def render_v07(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Die {p} {energy} kWh reichen für rund", f"{format_fact_number(e / .03)} Liftfahrten vom UG ins 2. OG."
+
+
+def render_v09(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Mit den {p} {energy} kWh käme ein Zürcher Tram", f"rund {format_fact_number(e / 3.5)} km weit."
+
+
+def render_v09_short(e, _p):
+    energy = format_energy(e)
+    return f"{energy} kWh bringen ein Zürcher Tram rund", f"{format_fact_number(e / 3.5)} km weit."
+
+
+def render_h01(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Die {p} {energy} kWh reichen für rund", f"{format_fact_number(e / .368)} Waschmaschinenladungen."
+
+
+def render_u01(e, _p):
+    energy = format_energy(e)
+    return f"Eine Discokugel könnte mit {energy} kWh rund", f"{format_hours_as_years(e / .004)} Jahre rotieren."
+
+
+def render_u02(e, _p):
+    energy = format_energy(e)
+    return f"Eine Schulglocke könnte mit {energy} kWh rund", f"{format_hours_as_days(e / .040)} Tage ununterbrochen läuten."
+
+
+def render_x01(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Das AKW Gösgen erzeugt die {p} {energy} kWh", f"in rund {format_seconds(e / 1_010_000 * 3600)} Sekunden."
+
+
+def render_x03(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Die {p} {energy} kWh entsprechen rund", f"{format_percent(e / 417 * 100)} % eines durchschnittlichen Blitzes."
+
+
+def render_x11(e, p):
+    energy, p = _energy_period(e, p)
+    return f"Der LHC am CERN verbraucht die {p} {energy} kWh", f"in rund {format_seconds(e / 68_500 * 3600)} Sekunden."
+
+
+def render_cmb07(e, _p):
+    energy = format_energy(e)
+    years = format_fact_number(e * 1.369)
+    seconds = format_seconds(e / 1_010_000 * 3600)
+    return (f"Für {energy} kWh bräuchte ein Goldhamster rund {years} Jahre.",
+            f"Das AKW Gösgen benötigt rund {seconds} Sekunden.")
+
+
 FACTS = (
-    _fact("D01", "digital", 65, "iPhone-Ladungen", "Genug Energie für viele Nachrichten unterwegs."),
-    _fact("D02", "digital", 500, "Stunden Instagram-Doomscrolling", "Der Daumen hätte dabei einiges zu tun.", "Stunden Doomscrolling"),
-    _fact("K01", "kitchen", 10, "Espressi", "Die passende Menge für eine sehr lange Kaffeepause."),
-    _fact("K03", "kitchen", 1250, "Eiswürfeln", "Damit bliebe manches Sommergetränk kühl."),
-    _fact("K08", "kitchen", 1.25, "Racletteportionen", "Geschmolzener Käse braucht erstaunlich viel Strom."),
-    _fact("M01", "motion", 5, "Stunden menschlicher Veloleistung", "Beine müssten dafür kräftig in die Pedale treten.", "Velostunden"),
-    _fact("M03", "motion", 1800, "Hamsterrad-Runden", "Ein Goldhamster wäre damit lange beschäftigt."),
-    _fact("V01", "mobility", 50, "E-Bike-Kilometern", "Damit reicht es weit über die Stadtgrenze hinaus."),
-    _fact("V03", "mobility", 6, "Kilometern im Tesla Model 3", "Elektrisch unterwegs mit Energie vom Dach.", "Tesla-Kilometern"),
-    _fact("V07", "mobility", 25, "Liftfahrten vom UG bis ins 2. OG", "Treppensteigen spart diese Energie ganz ein.", "Liftfahrten UG–2. OG"),
-    _fact("V09", "mobility", .22, "Kilometern mit einem Zürcher Tram", "Ein ganzes Tram benötigt entsprechend mehr Energie.", "Zürcher Tramkilometern"),
-    _fact("H01", "household", 1.4, "Waschmaschinenladungen", "Saubere Wäsche direkt mit Sonnenstrom."),
-    _fact("U01", "curious", 100, "Stunden Discokugellicht", "Zeit für eine ziemlich ausdauernde Party."),
-    _fact("U02", "curious", 3600, "Sekunden Schulglocke", "Das wären ausgesprochen viele Pausenzeichen."),
-    _fact("X01", "large_scale", 0.000001, "Sekunden im AKW Gösgen", "Ein Grosskraftwerk erzeugt diese Menge blitzschnell.", "AKW-Sekunden"),
-    _fact("X03", "large_scale", .00025, "durchschnittlichen Blitzenergien", "Ein Blitz setzt seine Energie in einem Moment frei.", "Blitzenergien"),
-    _fact("X11", "large_scale", .000008, "Sekunden LHC-Betrieb am CERN", "Teilchenphysik spielt energetisch in einer anderen Liga.", "LHC-Sekunden"),
-    _fact("CMB07", "combined", 1800, "Hamsterrad-Runden", "Das AKW Gösgen schafft dieselbe Energie fast augenblicklich."),
+    FactDefinition("D01", "digital", 1, 120, 1, render_d01),
+    FactDefinition("D02", "digital", 5, 120, 1, render_d02),
+    FactDefinition("K01", "kitchen", 1, 80, 1, render_k01),
+    FactDefinition("K03", "kitchen", 1, 80, 1, render_k03),
+    FactDefinition("K08", "kitchen", 5, 120, 1, render_k08),
+    FactDefinition("M01", "motion", 10, 160, 1, render_m01),
+    FactDefinition("M03", "motion", 5, 160, 1, render_m03),
+    FactDefinition("V01", "mobility", 5, 160, 1, render_v01),
+    FactDefinition("V03", "mobility", 10, 160, 1, render_v03),
+    FactDefinition("V07", "mobility", 1, 80, 1, render_v07),
+    FactDefinition("V09", "mobility", 25, 160, 1, render_v09, render_v09_short),
+    FactDefinition("H01", "household", 1, 120, 1, render_h01),
+    FactDefinition("U01", "curious", 5, 160, 1, render_u01),
+    FactDefinition("U02", "curious", 5, 160, 1, render_u02),
+    FactDefinition("X01", "large_scale", 100, 160, 1, render_x01),
+    FactDefinition("X03", "large_scale", 25, 160, 1, render_x03),
+    FactDefinition("X11", "large_scale", 50, 160, 1, render_x11),
+    FactDefinition("CMB07", "combined", 50, 160, 1, render_cmb07),
 )
+
+FACTS_BY_ID = {fact.fact_id: fact for fact in FACTS}
