@@ -218,6 +218,32 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(view["story_status"]["fact_id"], "TECH")
         self.assertIsNone(view["story_status"]["selection_energy_kwh"])
 
+    def test_total_counter_repairs_fact_anchor_when_day_energy_is_zero(self):
+        now = datetime(2026, 7, 25, 8, 12, tzinfo=timezone.utc)
+        self.snapshot(datetime(2026, 7, 24, 21, 59, tzinfo=timezone.utc),
+                      energy_today=0, energy_total=1940.916744)
+        for timestamp, total in (
+            (datetime(2026, 7, 25, 8, 1, tzinfo=timezone.utc), 1942.0),
+            (datetime(2026, 7, 25, 8, 4, tzinfo=timezone.utc), 1942.2),
+            (datetime(2026, 7, 25, 8, 6, tzinfo=timezone.utc), 1942.5),
+            (datetime(2026, 7, 25, 8, 9, tzinfo=timezone.utc), 1942.8),
+            (now, 1943.0),
+        ):
+            self.snapshot(timestamp, energy_today=0, energy_total=total)
+        self.db.aggregate_completed(now)
+
+        view = build_live_view(self.db, now)
+        status = view["story_status"]
+        self.assertEqual(view["freshness"], "fresh")
+        self.assertEqual(status["phase"], "active_production")
+        self.assertEqual(status["energy_period"], "today")
+        self.assertIsNotNone(status["selection_energy_kwh"])
+        self.assertIsNotNone(status["selection_bucket_start"])
+        self.assertNotEqual(status["fact_id"], "TECH")
+        self.assertGreater(view["display"]["day_yield_kwh"], 1)
+        self.assertLessEqual(status["selection_energy_kwh"],
+                             view["display"]["day_yield_kwh"])
+
     def test_atomic_publish_and_failed_publish_preserves_file(self):
         self.snapshot()
         with tempfile.TemporaryDirectory() as directory:

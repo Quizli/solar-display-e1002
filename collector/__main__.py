@@ -5,10 +5,11 @@ import os
 import signal
 import sys
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fronius.client import FroniusClient
 from solar_data.storage import SolarDatabase
+from solar_data.timezones import ZURICH
 
 from .service import Collector
 
@@ -39,6 +40,8 @@ def parser() -> argparse.ArgumentParser:
             )
     subparsers.add_parser("status")
     subparsers.add_parser("aggregate")
+    repair = subparsers.add_parser("repair-energy")
+    repair.add_argument("--day", type=date.fromisoformat)
     return result
 
 
@@ -53,6 +56,12 @@ def main() -> int:
         if args.command == "aggregate":
             count = database.aggregate_completed(datetime.now(timezone.utc))
             print(json.dumps({"processed_buckets": count}))
+            return 0
+        if args.command == "repair-energy":
+            local_day = args.day or datetime.now(ZURICH).date()
+            count = database.repair_aggregate_daily_energy(local_day)
+            print(json.dumps({"local_day": local_day.isoformat(),
+                              "updated_aggregates": count}))
             return 0
         if not args.base_url:
             parser().error("--base-url or FRONIUS_BASE_URL is required")

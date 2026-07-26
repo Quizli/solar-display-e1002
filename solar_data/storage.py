@@ -199,9 +199,11 @@ class SolarDatabase:
                ORDER BY raw.bucket_start_utc""",
             (current_bucket,),
         ).fetchall()
+        affected_days = set()
         with self.connection:
             for item in buckets:
                 key = item[0]
+                affected_days.add(_aware_utc(key).astimezone(ZURICH).date())
                 rows = self.connection.execute(
                     """SELECT * FROM raw_samples WHERE bucket_start_utc = ?
                        ORDER BY timestamp_utc""",
@@ -231,6 +233,8 @@ class SolarDatabase:
                      last["energy_today_kwh"], len(rows),
                      last["battery_available"], last["heat_available"]),
                 )
+            for local_day in affected_days:
+                self.repair_aggregate_daily_energy(local_day)
         return len(buckets)
 
     def delete_expired_raw(self, retention_days: float = 7,
@@ -289,13 +293,22 @@ class SolarDatabase:
             heat_available=bool(row["heat_available"]),
         ) for row in rows]
 
-    def daily_energy(self, local_day: date) -> DailyEnergy:
-        """Derive a Zurich-local day's yield from the counter or power buckets."""
+    @staticmethod
+    def _local_day_bounds(local_day: date):
         local_start = datetime.combine(local_day, datetime.min.time(), tzinfo=ZURICH)
         local_end = datetime.combine(
             local_day + timedelta(days=1), datetime.min.time(), tzinfo=ZURICH
         )
-        start, end = _utc_text(local_start), _utc_text(local_end)
+        return local_start.astimezone(UTC), local_end.astimezone(UTC)
+
+    def _daily_energy_through(self, local_day: date,
+                              timestamp_utc: datetime) -> DailyEnergy:
+        """Derive cumulative local-day energy through an aware UTC instant."""
+        if timestamp_utc.tzinfo is None or timestamp_utc.utcoffset() is None:
+            raise ValueError("timestamp_utc must be timezone-aware")
+        local_start, local_end = self._local_day_bounds(local_day)
+        cutoff = min(max(timestamp_utc.astimezone(UTC), local_start), local_end)
+        start, end = _utc_text(local_start), _utc_text(cutoff)
         last_before = self.connection.execute(
             """SELECT energy_total_kwh FROM raw_samples
                WHERE timestamp_utc < ? AND energy_total_kwh IS NOT NULL
@@ -310,27 +323,79 @@ class SolarDatabase:
             (start, end),
         ).fetchall()
 
-        if day_values:
-            baseline = last_before[0] if last_before else day_values[0][0]
-            complete = last_before is not None
-            counter_values = ([baseline] if complete else []) + [row[0] for row in day_values]
+        valid_day_values = [row[0] for row in day_values
+                            if math.isfinite(row[0]) and row[0] >= 0]
+        valid_baseline = (last_before[0] if last_before and
+                          math.isfinite(last_before[0]) and last_before[0] >= 0 else None)
+        counter_unusable = False
+        zero_counter_result = None
+        if valid_day_values:
+            baseline = valid_baseline if valid_baseline is not None else valid_day_values[0]
+            complete = valid_baseline is not None
+            counter_values = ([baseline] if complete else []) + valid_day_values
             monotonic = all(
                 current >= previous
                 for previous, current in zip(counter_values, counter_values[1:])
             )
-            difference = day_values[-1][0] - baseline
-            if monotonic and difference >= 0 and (complete or len(day_values) >= 2):
+            difference = valid_day_values[-1] - baseline
+            enough_values = complete or len(valid_day_values) >= 2
+            if monotonic and difference > 0 and enough_values:
                 return DailyEnergy(difference, "total_counter", complete)
+            if monotonic and difference == 0 and enough_values:
+                zero_counter_result = DailyEnergy(0.0, "total_counter", complete)
+            else:
+                counter_unusable = True
+
+        direct_values = self.connection.execute(
+            """SELECT energy_today_kwh FROM raw_samples
+               WHERE timestamp_utc >= ? AND timestamp_utc < ?
+                 AND energy_today_kwh > 0
+               ORDER BY timestamp_utc""",
+            (start, end),
+        ).fetchall()
+        direct = [row[0] for row in direct_values
+                  if math.isfinite(row[0]) and row[0] > 0]
+        if not counter_unusable and direct and all(current >= previous
+                          for previous, current in zip(direct, direct[1:])):
+            return DailyEnergy(direct[-1], "day_energy", True)
+        if zero_counter_result is not None:
+            return zero_counter_result
 
         # Counter reset, no usable baseline, or no counter: integrate each
         # persisted bucket over its actual overlap with this UTC day interval.
         energy = 0.0
-        start_utc = local_start.astimezone(UTC)
-        end_utc = local_end.astimezone(UTC)
         for aggregate in self.aggregates_for_local_day(local_day):
             bucket = _aware_utc(aggregate.bucket_start)
-            overlap_start = max(bucket, start_utc)
-            overlap_end = min(bucket + timedelta(minutes=5), end_utc)
+            if bucket >= cutoff:
+                break
+            overlap_start = max(bucket, local_start)
+            overlap_end = min(bucket + timedelta(minutes=5), cutoff)
             hours = max(0.0, (overlap_end - overlap_start).total_seconds() / 3600.0)
             energy += max(0.0, aggregate.solar_power_kw) * hours
         return DailyEnergy(max(0.0, energy), "solar_integration", False)
+
+    def daily_energy(self, local_day: date) -> DailyEnergy:
+        """Derive a Zurich-local day's yield from the shared cumulative model."""
+        _, local_end = self._local_day_bounds(local_day)
+        return self._daily_energy_through(local_day, local_end)
+
+    def repair_aggregate_daily_energy(self, local_day: date) -> int:
+        """Idempotently repair cumulative energy only for a day's aggregates."""
+        rows = self.aggregates_for_local_day(local_day)
+        changed = 0
+        previous_energy = 0.0
+        with self.connection:
+            for aggregate in rows:
+                bucket_end = _aware_utc(aggregate.bucket_start) + timedelta(minutes=5)
+                derived = self._daily_energy_through(local_day, bucket_end).energy_today_kwh
+                energy = max(previous_energy, derived)
+                previous_energy = energy
+                if not math.isclose(aggregate.energy_today_kwh, energy,
+                                    rel_tol=1e-12, abs_tol=1e-9):
+                    self.connection.execute(
+                        """UPDATE aggregates_5m SET energy_today_kwh = ?
+                           WHERE bucket_start_utc = ?""",
+                        (energy, aggregate.bucket_start),
+                    )
+                    changed += 1
+        return changed

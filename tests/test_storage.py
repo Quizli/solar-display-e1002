@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fronius.model import LiveData
-from solar_data.storage import SolarDatabase, bucket_start
+from solar_data.storage import SolarDatabase, _utc_text, bucket_start
 from solar_data.timezones import ZURICH
 
 
@@ -186,6 +186,71 @@ class StorageTest(unittest.TestCase):
         result = self.database.daily_energy(date(2026, 7, 25))
         self.assertEqual(result.energy_today_kwh, 0)
         self.assertEqual(result.source, "solar_integration")
+
+    def test_aggregate_energy_uses_total_counter_and_is_cumulative(self):
+        self.database.store_snapshot(
+            snapshot("2026-07-24T21:59:00+00:00", energy=0, total=1940.916744)
+        )
+        for timestamp, total in (
+            ("2026-07-25T08:01:00+00:00", 1950.0),
+            ("2026-07-25T08:04:00+00:00", 1951.0),
+            ("2026-07-25T08:06:00+00:00", 1997.0),
+            ("2026-07-25T08:09:00+00:00", 1997.735259),
+        ):
+            self.database.store_snapshot(snapshot(timestamp, value=6, energy=0, total=total))
+
+        self.assertEqual(
+            self.database.aggregate_completed(datetime(2026, 7, 25, 8, 10, tzinfo=UTC)), 3
+        )
+        rows = self.database.aggregates_for_local_day(date(2026, 7, 25))
+        values = [row.energy_today_kwh for row in rows]
+        self.assertEqual(len(values), 2)
+        self.assertAlmostEqual(values[-1], 56.818515)
+        self.assertGreater(values[0], 0)
+        self.assertEqual(values, sorted(values))
+
+    def test_repair_existing_aggregates_is_idempotent_and_preserves_other_fields(self):
+        self.database.store_snapshot(snapshot("2026-07-24T21:59:00+00:00", energy=0, total=100))
+        self.database.store_snapshot(snapshot("2026-07-25T08:01:00+00:00", value=3,
+                                              soc=72, energy=0, total=102))
+        self.database.aggregate_completed(datetime(2026, 7, 25, 8, 5, tzinfo=UTC))
+        day = date(2026, 7, 25)
+        self.database.connection.execute(
+            "UPDATE aggregates_5m SET energy_today_kwh = 0 WHERE bucket_start_utc >= ?",
+            (_utc_text(datetime(2026, 7, 24, 22, tzinfo=UTC)),),
+        )
+        self.database.connection.commit()
+        before = self.database.connection.execute(
+            "SELECT * FROM aggregates_5m WHERE bucket_start_utc >= ?",
+            (_utc_text(datetime(2026, 7, 24, 22, tzinfo=UTC)),),
+        ).fetchone()
+
+        self.assertEqual(self.database.repair_aggregate_daily_energy(day), 1)
+        after = self.database.connection.execute(
+            "SELECT * FROM aggregates_5m WHERE bucket_start_utc = ?",
+            (before["bucket_start_utc"],),
+        ).fetchone()
+        self.assertEqual(after["energy_today_kwh"], 2)
+        preserved = set(after.keys()) - {"energy_today_kwh"}
+        for field in preserved:
+            self.assertEqual(after[field], before[field])
+        self.assertEqual(self.database.repair_aggregate_daily_energy(day), 0)
+
+    def test_positive_day_energy_is_used_when_total_counter_is_absent(self):
+        self.database.store_snapshot(snapshot("2026-07-25T08:01:00+00:00",
+                                              energy=4.25, total=None))
+        self.database.aggregate_completed(datetime(2026, 7, 25, 8, 5, tzinfo=UTC))
+        row = self.database.aggregates_for_local_day(date(2026, 7, 25))[0]
+        self.assertEqual(row.energy_today_kwh, 4.25)
+        self.assertEqual(self.database.daily_energy(date(2026, 7, 25)).source, "day_energy")
+
+    def test_repaired_energy_obeys_dst_fallback_day_boundaries(self):
+        self.database.store_snapshot(snapshot("2026-10-24T21:59:00+00:00", energy=0, total=10))
+        self.database.store_snapshot(snapshot("2026-10-25T00:32:00+00:00", energy=0, total=11))
+        self.database.store_snapshot(snapshot("2026-10-25T01:32:00+00:00", energy=0, total=12))
+        self.database.aggregate_completed(datetime(2026, 10, 25, 2, tzinfo=UTC))
+        rows = self.database.aggregates_for_local_day(date(2026, 10, 25))
+        self.assertEqual([row.energy_today_kwh for row in rows], [1, 2])
 
 
 if __name__ == "__main__":
