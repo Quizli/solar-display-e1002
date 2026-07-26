@@ -7,6 +7,7 @@ from solar_data.timezones import ZURICH
 from .chart import build_chart
 from .weather import weather_icon_variant
 from .facts import FactContext, Story, build_story_from_context, hour_key
+from .facts.catalog import has_eligible_fact_for_energy
 
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 MONTHS = ("", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember")
@@ -77,7 +78,7 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None):
     anchors = {}
     anchor_buckets = {}
     for aggregate in database.aggregates_for_local_day(now_local.date()):
-        if aggregate.energy_today_kwh < .1:
+        if not has_eligible_fact_for_energy(aggregate.energy_today_kwh):
             continue
         bucket_local = _aware_utc(aggregate.bucket_start).astimezone(ZURICH)
         key = hour_key(bucket_local)

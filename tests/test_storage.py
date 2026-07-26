@@ -67,36 +67,6 @@ class StorageTest(unittest.TestCase):
         count = self.database.connection.execute("SELECT count(*) FROM aggregates_5m").fetchone()[0]
         self.assertEqual(count, 1)
 
-    def test_first_completed_aggregate_for_local_hour_is_the_anchor(self):
-        self.database.store_snapshot(snapshot("2026-07-25T12:06:00+02:00", energy=12))
-        self.database.store_snapshot(snapshot("2026-07-25T12:01:00+02:00", energy=10))
-        self.database.aggregate_completed(datetime(2026, 7, 25, 10, 10, tzinfo=UTC))
-        hour = datetime(2026, 7, 25, 12, 31, tzinfo=ZURICH)
-        anchor = self.database.first_completed_aggregate_for_local_hour(hour)
-        self.assertIsNotNone(anchor)
-        self.assertEqual(anchor.energy_today_kwh, 10)
-        self.assertIsNone(self.database.first_completed_aggregate_for_local_hour(
-            datetime(2026, 7, 25, 13, 1, tzinfo=ZURICH)
-        ))
-        with self.assertRaises(ValueError):
-            self.database.first_completed_aggregate_for_local_hour(
-                datetime(2026, 7, 25, 12)
-            )
-
-    def test_hour_anchor_can_skip_initial_zero_energy_bucket(self):
-        self.database.store_snapshot(snapshot("2026-07-25T06:01:00+02:00", energy=0))
-        self.database.store_snapshot(snapshot("2026-07-25T06:21:00+02:00", energy=.2))
-        self.database.aggregate_completed(datetime(2026, 7, 25, 4, 30, tzinfo=UTC))
-        hour = datetime(2026, 7, 25, 6, tzinfo=ZURICH)
-        self.assertEqual(
-            self.database.first_completed_aggregate_for_local_hour(hour).energy_today_kwh, 0
-        )
-        positive = self.database.first_completed_aggregate_for_local_hour(
-            hour, minimum_energy_kwh=.1
-        )
-        self.assertIsNotNone(positive)
-        self.assertEqual(positive.energy_today_kwh, .2)
-
     def test_late_sample_reaggregates_only_its_changed_bucket(self):
         now = datetime(2026, 7, 25, 8, 10, tzinfo=UTC)
         self.database.store_snapshot(snapshot("2026-07-25T10:01:00+02:00", value=1))

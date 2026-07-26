@@ -1,7 +1,8 @@
 import unittest
 from datetime import datetime
 
-from dashboard.facts.catalog import FACTS, FACTS_BY_ID, render_d01
+from dashboard.facts.catalog import (FACTS, FACTS_BY_ID,
+                                     has_eligible_fact_for_energy, render_d01)
 from dashboard.facts.engine import (_render, build_hourly_fact_plan,
                                     build_story_from_context, determine_phase,
                                     hour_key, select_fact_for_hour)
@@ -181,6 +182,13 @@ class FactsEngineTest(unittest.TestCase):
         at_150 = {fact.fact_id for fact in FACTS if fact.min_kwh <= 150 <= fact.max_kwh}
         self.assertIn("X01", at_150)
         self.assertNotIn("D01", at_150)
+
+    def test_fact_eligibility_helper_uses_catalog_ranges(self):
+        self.assertFalse(has_eligible_fact_for_energy(None))
+        self.assertFalse(has_eligible_fact_for_energy(.2))
+        self.assertTrue(has_eligible_fact_for_energy(1))
+        self.assertTrue(has_eligible_fact_for_energy(160))
+        self.assertFalse(has_eligible_fact_for_energy(161))
 
     def test_every_catalog_template_fits_at_representative_energies(self):
         for energy in (5, 25, 75, 150):

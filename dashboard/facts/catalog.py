@@ -129,3 +129,10 @@ FACTS = (
 )
 
 FACTS_BY_ID = {fact.fact_id: fact for fact in FACTS}
+
+
+def has_eligible_fact_for_energy(energy_kwh):
+    """Whether at least one catalog fact admits this selection energy."""
+    if energy_kwh is None:
+        return False
+    return any(fact.min_kwh <= energy_kwh <= fact.max_kwh for fact in FACTS)

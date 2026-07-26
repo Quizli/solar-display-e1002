@@ -27,16 +27,17 @@ class DashboardTest(unittest.TestCase):
     def tearDown(self):
         self.db.close()
 
-    def snapshot(self, timestamp=None, battery=False, heat_available=True):
+    def snapshot(self, timestamp=None, battery=False, heat_available=True,
+                 energy_today=0, energy_total=None):
         self.db.store_snapshot(LiveData(timestamp=(timestamp or self.now).isoformat(), solar_power_kw=9,
             house_power_kw=7, heat_power_kw=2 if heat_available else 0,
             battery_soc_pct=0, battery_power_kw=0,
-            grid_power_kw=2, energy_today_kwh=0, battery_available=battery,
-            heat_available=heat_available, energy_total_kwh=None))
+            grid_power_kw=2, energy_today_kwh=energy_today, battery_available=battery,
+            heat_available=heat_available, energy_total_kwh=energy_total))
 
-    def aggregate(self, start, solar, house, heat, battery, grid, count):
+    def aggregate(self, start, solar, house, heat, battery, grid, count, energy=0):
         self.db.connection.execute("INSERT INTO aggregates_5m VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (_utc_text(start), solar, house, heat, 0, battery, grid, 0, count, 0, 1))
+            (_utc_text(start), solar, house, heat, 0, battery, grid, energy, count, 0, 1))
         self.db.connection.commit()
 
     def test_two_buckets_are_sample_weighted_and_house_includes_heat(self):
@@ -181,6 +182,41 @@ class DashboardTest(unittest.TestCase):
         stale = build_live_view(self.db, self.now+timedelta(minutes=4))
         self.assertEqual(stale["freshness"], "stale")
         self.assertIn("Datenstand", stale["display"]["story_line_1"])
+
+    def test_story_uses_first_fact_eligible_morning_bucket_as_anchor(self):
+        now = datetime(2026, 7, 25, 4, 45, tzinfo=timezone.utc)  # 06:45 Zurich
+        baseline = datetime(2026, 7, 24, 21, 55, tzinfo=timezone.utc)
+        self.snapshot(baseline, energy_total=1000)
+        self.snapshot(now, energy_today=1.4, energy_total=1001.4)
+        self.aggregate(now.replace(minute=0), 0, 1, 0, 0, -1, 1, energy=0)
+        self.aggregate(now.replace(minute=20), .2, 1, 0, 0, -.8, 1, energy=.2)
+        anchor_start = now.replace(minute=35)
+        self.aggregate(anchor_start, 1.1, 1, 0, 0, .1, 1, energy=1.1)
+
+        first = build_live_view(self.db, now)
+        status = first["story_status"]
+        self.assertNotEqual(status["fact_id"], "TECH")
+        self.assertEqual(status["energy_period"], "today")
+        self.assertEqual(status["selection_energy_kwh"], 1.1)
+        self.assertEqual(status["selection_bucket_start"], _utc_text(anchor_start))
+
+        later_time = now + timedelta(minutes=1)
+        self.snapshot(later_time, energy_today=2.4, energy_total=1002.4)
+        later = build_live_view(self.db, later_time)
+        self.assertEqual(later["story_status"]["fact_id"], status["fact_id"])
+        self.assertNotEqual(
+            (later["display"]["story_line_1"], later["display"]["story_line_2"]),
+            (first["display"]["story_line_1"], first["display"]["story_line_2"]),
+        )
+
+    def test_story_waits_before_first_fact_eligible_morning_bucket(self):
+        now = datetime(2026, 7, 25, 4, 25, tzinfo=timezone.utc)
+        self.snapshot(now, energy_today=.8)
+        self.aggregate(now.replace(minute=0), 0, 1, 0, 0, -1, 1, energy=0)
+        self.aggregate(now.replace(minute=20), .2, 1, 0, 0, -.8, 1, energy=.2)
+        view = build_live_view(self.db, now)
+        self.assertEqual(view["story_status"]["fact_id"], "TECH")
+        self.assertIsNone(view["story_status"]["selection_energy_kwh"])
 
     def test_atomic_publish_and_failed_publish_preserves_file(self):
         self.snapshot()
