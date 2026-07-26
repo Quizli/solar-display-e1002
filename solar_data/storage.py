@@ -327,7 +327,6 @@ class SolarDatabase:
                             if math.isfinite(row[0]) and row[0] >= 0]
         valid_baseline = (last_before[0] if last_before and
                           math.isfinite(last_before[0]) and last_before[0] >= 0 else None)
-        counter_unusable = False
         zero_counter_result = None
         if valid_day_values:
             baseline = valid_baseline if valid_baseline is not None else valid_day_values[0]
@@ -343,8 +342,6 @@ class SolarDatabase:
                 return DailyEnergy(difference, "total_counter", complete)
             if monotonic and difference == 0 and enough_values:
                 zero_counter_result = DailyEnergy(0.0, "total_counter", complete)
-            else:
-                counter_unusable = True
 
         direct_values = self.connection.execute(
             """SELECT energy_today_kwh FROM raw_samples
@@ -355,7 +352,7 @@ class SolarDatabase:
         ).fetchall()
         direct = [row[0] for row in direct_values
                   if math.isfinite(row[0]) and row[0] > 0]
-        if not counter_unusable and direct and all(current >= previous
+        if direct and all(current >= previous
                           for previous, current in zip(direct, direct[1:])):
             return DailyEnergy(direct[-1], "day_energy", True)
         if zero_counter_result is not None:

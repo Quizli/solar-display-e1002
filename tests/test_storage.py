@@ -167,10 +167,10 @@ class StorageTest(unittest.TestCase):
     def test_counter_reset_falls_back_to_five_minute_power_integration(self):
         self.database.store_snapshot(snapshot("2026-07-24T21:59:00+00:00", total=100))
         self.database.store_snapshot(
-            snapshot("2026-07-25T10:01:00+00:00", value=12, total=2)
+            snapshot("2026-07-25T10:01:00+00:00", value=12, energy=0, total=2)
         )
         self.database.store_snapshot(
-            snapshot("2026-07-25T10:06:00+00:00", value=12, total=3)
+            snapshot("2026-07-25T10:06:00+00:00", value=12, energy=0, total=3)
         )
         self.database.aggregate_completed(datetime(2026, 7, 25, 10, 15, tzinfo=UTC))
         result = self.database.daily_energy(date(2026, 7, 25))
@@ -180,12 +180,64 @@ class StorageTest(unittest.TestCase):
 
     def test_single_counter_without_baseline_uses_non_negative_power_fallback(self):
         self.database.store_snapshot(
-            snapshot("2026-07-25T10:01:00+00:00", value=-3, total=5)
+            snapshot("2026-07-25T10:01:00+00:00", value=-3, energy=0, total=5)
         )
         self.database.aggregate_completed(datetime(2026, 7, 25, 10, 10, tzinfo=UTC))
         result = self.database.daily_energy(date(2026, 7, 25))
         self.assertEqual(result.energy_today_kwh, 0)
         self.assertEqual(result.source, "solar_integration")
+
+    def test_counter_reset_falls_back_to_day_energy_for_daily_and_aggregates(self):
+        day = date(2026, 7, 25)
+        self.database.store_snapshot(
+            snapshot("2026-07-24T21:59:00+00:00", energy=0, total=100)
+        )
+        self.database.store_snapshot(
+            snapshot("2026-07-25T10:01:00+00:00", energy=4, total=2)
+        )
+        self.database.store_snapshot(
+            snapshot("2026-07-25T10:06:00+00:00", energy=5, total=3)
+        )
+
+        self.database.aggregate_completed(datetime(2026, 7, 25, 10, 15, tzinfo=UTC))
+        result = self.database.daily_energy(day)
+        self.assertEqual(result.source, "day_energy")
+        self.assertEqual(result.energy_today_kwh, 5)
+        self.assertEqual(
+            [row.energy_today_kwh for row in self.database.aggregates_for_local_day(day)],
+            [4, 5],
+        )
+
+    def test_single_total_counter_value_does_not_block_day_energy(self):
+        day = date(2026, 7, 25)
+        self.database.store_snapshot(
+            snapshot("2026-07-25T10:01:00+00:00", energy=4.25, total=5)
+        )
+        self.database.aggregate_completed(datetime(2026, 7, 25, 10, 5, tzinfo=UTC))
+
+        result = self.database.daily_energy(day)
+        self.assertEqual(result.source, "day_energy")
+        self.assertEqual(result.energy_today_kwh, 4.25)
+        self.assertEqual(
+            self.database.aggregates_for_local_day(day)[0].energy_today_kwh, 4.25
+        )
+
+    def test_decreasing_day_energy_falls_back_to_power_integration(self):
+        day = date(2026, 7, 25)
+        self.database.store_snapshot(
+            snapshot("2026-07-24T21:59:00+00:00", energy=0, total=100)
+        )
+        self.database.store_snapshot(
+            snapshot("2026-07-25T10:01:00+00:00", value=6, energy=5, total=2)
+        )
+        self.database.store_snapshot(
+            snapshot("2026-07-25T10:06:00+00:00", value=6, energy=4, total=3)
+        )
+        self.database.aggregate_completed(datetime(2026, 7, 25, 10, 15, tzinfo=UTC))
+
+        result = self.database.daily_energy(day)
+        self.assertEqual(result.source, "solar_integration")
+        self.assertEqual(result.energy_today_kwh, 1)
 
     def test_aggregate_energy_uses_total_counter_and_is_cumulative(self):
         self.database.store_snapshot(
