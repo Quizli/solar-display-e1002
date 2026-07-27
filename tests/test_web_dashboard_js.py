@@ -19,9 +19,9 @@ PAYLOAD = {
              "grid_flow": {"power_kw": .5, "magnitude_kw": .5, "direction": "exporting"}},
     "today": {"yield_kwh": 44.2, "self_consumption_percent": 67, "co2_avoided_kg": 5.4},
     "chart": {"interval_minutes": 5, "local_date": "2026-07-27", "series": [
-        {"start_at": "2026-07-27T08:00:00Z", "end_at": "2026-07-27T08:05:00Z", "solar_power_kw": 2, "house_consumption_kw": 1, "battery_power_kw": -1, "sample_count": 4},
-        {"start_at": "2026-07-27T08:05:00Z", "end_at": "2026-07-27T08:10:00Z", "solar_power_kw": 3, "house_consumption_kw": None, "battery_power_kw": .5, "sample_count": 4},
-        {"start_at": "2026-07-27T08:20:00Z", "end_at": "2026-07-27T08:25:00Z", "solar_power_kw": 4, "house_consumption_kw": 2, "battery_power_kw": None, "sample_count": 3}]},
+        {"start_at": "2026-07-27T08:00:00Z", "end_at": "2026-07-27T08:05:00Z", "solar_power_kw": 2, "house_consumption_kw": 1, "battery_state_of_charge_percent": 55, "battery_power_kw": -1, "sample_count": 4},
+        {"start_at": "2026-07-27T08:05:00Z", "end_at": "2026-07-27T08:10:00Z", "solar_power_kw": 3, "house_consumption_kw": None, "battery_state_of_charge_percent": 56, "battery_power_kw": .5, "sample_count": 4},
+        {"start_at": "2026-07-27T08:20:00Z", "end_at": "2026-07-27T08:25:00Z", "solar_power_kw": 4, "house_consumption_kw": 2, "battery_state_of_charge_percent": None, "battery_power_kw": None, "sample_count": 3}]},
     "insight": {"fact_id": "FACT", "family": "solar", "line_1": "Zeile eins", "line_2": "Zeile zwei", "selection_hour": "2026-07-27T19:00:00+02:00", "persisted": True},
     "historical_comparison": {"type": "HIST", "statement": "Höher als gestern.", "direction": "higher", "difference_percent": 10, "comparison_value_kwh": 44, "baseline_kwh": 40, "reference_period": "today", "reference_day": "2026-07-26", "comparison_day": None, "baseline_days": None},
 }
@@ -62,10 +62,10 @@ class WebDashboardJavaScriptTests(unittest.TestCase):
         payload = json.dumps(PAYLOAD, ensure_ascii=False)
         pure = JS_BOOT + f"const good={payload};" + r'''
 const weather=clone(good);weather.status.overall="degraded";weather.status.affected_components=["weather"];weather.status.components.weather="invalid";weather.header.weather_condition=null;weather.header.sunshine_hours=null;weather.header.sunrise=null;weather.header.sunset=null;
-const invalid=[];let p;p=clone(good);delete p.live.grid_flow;invalid.push(p);p=clone(good);p.data.age_seconds="8";invalid.push(p);p=clone(good);p.schema_version="2.0";invalid.push(p);p=clone(good);p.live.battery_flow.direction="full";invalid.push(p);p=clone(good);p.chart.series[0].start_at="bad";invalid.push(p);
+const invalid=[];let p;p=clone(good);delete p.live.grid_flow;invalid.push(p);p=clone(good);p.data.age_seconds="8";invalid.push(p);p=clone(good);p.schema_version="2.0";invalid.push(p);p=clone(good);p.live.battery_flow.direction="full";invalid.push(p);p=clone(good);p.chart.series[0].start_at="bad";invalid.push(p);p=clone(good);p.chart.series[0].battery_state_of_charge_percent=101;invalid.push(p);
 const model=api.chartModel(good.chart.series),x=v=>v,y=v=>v,weatherView=api.buildViewModel(weather);
 const clippingModel={top:20,bottom:-5},axisLayouts=[280,350,780,1200].map(width=>api.chartLayout({clientWidth:width,clientHeight:125},clippingModel));
-process.stdout.write(JSON.stringify({axisLayouts,formats:[api.formatTime(null),api.formatDate(null),api.formatTime(undefined),api.formatDate(""),api.formatTime(false),api.formatDate("bad")],invalid:invalid.map(api.validPayload),weatherValid:api.validPayload(weather),weather:weatherView,chart:{bottom:model.bottom,solar:api.pathSequences(model,"solar",x,y).length,house:api.pathSequences(model,"house",x,y).length},geometry320:api.chartGeometry({clientWidth:280,clientHeight:125}),geometry390:api.chartGeometry({clientWidth:350,clientHeight:125})}));'''
+process.stdout.write(JSON.stringify({axisLayouts,formats:[api.formatTime(null),api.formatDate(null),api.formatTime(undefined),api.formatDate(""),api.formatTime(false),api.formatDate("bad")],invalid:invalid.map(api.validPayload),weatherValid:api.validPayload(weather),weather:weatherView,chart:{bottom:model.bottom,solar:api.pathSequences(model,"solar",x,y).length,house:api.pathSequences(model,"house",x,y).length,battery:api.pathSequences(model,"battery",x,y).length,batteryValues:model.points.map(point=>point.battery)},geometry320:api.chartGeometry({clientWidth:280,clientHeight:125}),geometry390:api.chartGeometry({clientWidth:350,clientHeight:125}),timeTicksMobile:api.chartTimeTicks(256),timeTicksWide:api.chartTimeTicks(326)}));'''
         cls.result = run_js(pure)
 
         controller = JS_BOOT + DOM_HELPER + f"const good={payload};" + r'''
@@ -90,7 +90,7 @@ process.stdout.write(JSON.stringify({axisLayouts,formats:[api.formatTime(null),a
         self.assertEqual(weather["fields"]["header.sunrise"], "—")
 
     def test_incomplete_wrong_schema_and_wrong_types_are_rejected(self):
-        self.assertEqual(self.result["invalid"], [False] * 5)
+        self.assertEqual(self.result["invalid"], [False] * 6)
 
     def test_invalid_initial_payload_ends_loading_as_offline(self):
         initial = self.dom["initial"]
@@ -144,12 +144,20 @@ process.stdout.write(JSON.stringify({axisLayouts,formats:[api.formatTime(null),a
             self.assertGreaterEqual(layout["labelStart"], 0)
             self.assertGreater(layout["left"], layout["labelWidth"])
             self.assertLess(layout["left"], layout["width"] - layout["right"])
-            self.assertEqual(layout["axisLabels"], ["20.0 kW", "0.0 kW", "-5.0 kW"])
+            self.assertLessEqual(layout["batteryLabelEnd"], layout["width"])
+            self.assertEqual(layout["axisLabels"],
+                             ["20.0 kW", "13.8 kW", "7.5 kW", "1.3 kW", "-5.0 kW"])
+            self.assertEqual(layout["batteryAxisLabels"],
+                             ["100 %", "75 %", "50 %", "25 %", "0 %"])
 
-    def test_chart_gap_negative_battery_and_mobile_font_geometry(self):
-        self.assertLess(self.result["chart"]["bottom"], 0)
+    def test_chart_gap_battery_percent_and_mobile_font_geometry(self):
+        self.assertEqual(self.result["chart"]["bottom"], 0)
         self.assertEqual(self.result["chart"]["solar"], 2)
         self.assertEqual(self.result["chart"]["house"], 2)
+        self.assertEqual(self.result["chart"]["battery"], 1)
+        self.assertEqual(self.result["chart"]["batteryValues"], [55, 56, None])
+        self.assertEqual(self.result["timeTicksMobile"], [0, 480, 960, 1440])
+        self.assertEqual(self.result["timeTicksWide"], [0, 360, 720, 1080, 1440])
         for geometry in (self.result["geometry320"], self.result["geometry390"]):
             self.assertGreaterEqual(geometry["fontSize"], 10)
             self.assertGreaterEqual(geometry["width"], 240)
