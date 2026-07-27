@@ -304,9 +304,13 @@ können nach mehreren abgeschlossenen Tagen historische Ertragsvergleiche ersche
 
 Die statische Produktionsoberfläche liegt in `web/dashboard.html`; ihr
 Solar-Glass-Theme und das lokale SVG-Sprite liegen unter `web/assets/`. Compose
-bindet diese Dateien in denselben Nginx-Dokumentstamm wie die unverändert aus
-`publish/` bereitgestellten Dateien `dashboard.json` und `dashboard.svg` ein.
-Damit ist keine zweite Webanwendung und kein zusätzlicher Service nötig.
+bindet `web/` und `publish/` als getrennte schreibgeschützte Verzeichnisse in
+denselben Nginx-Service ein. Explizite Nginx-Routen liefern die Oberfläche und
+ihre Assets aus `web/`, während `dashboard.json` und `dashboard.svg` weiterhin
+direkt aus `publish/` stammen. Die getrennten Mount-Ziele vermeiden
+verschachtelte Bind-Mounts und funktionieren damit auch mit der
+Synology-Docker-Runtime. Eine zweite Webanwendung oder ein zusätzlicher Service
+ist nicht nötig.
 
 Die semantischen Komponenten sind mit `data-component`, Vertragsfelder mit
 `data-field` und gerichtete Energieflüsse mit `data-direction` vorbereitet.

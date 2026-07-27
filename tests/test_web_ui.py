@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HTML = ROOT / "web" / "dashboard.html"
 CSS = ROOT / "web" / "assets" / "dashboard.css"
 ICONS = ROOT / "web" / "assets" / "icons.svg"
+NGINX = ROOT / "deploy" / "nginx" / "default.conf"
 
 
 class DashboardParser(HTMLParser):
@@ -128,10 +129,20 @@ class WebDashboardShellTests(unittest.TestCase):
     def test_compose_serves_shell_alongside_publisher_outputs(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn("./publish:/usr/share/nginx/html:ro", compose)
-        self.assertIn("./web/dashboard.html:/usr/share/nginx/html/dashboard.html:ro", compose)
-        self.assertIn("./web/assets:/usr/share/nginx/html/assets:ro", compose)
+        self.assertIn("./web:/usr/share/nginx/dashboard-shell:ro", compose)
+        self.assertNotIn("./web/dashboard.html:/usr/share/nginx/html/", compose)
+        self.assertNotIn("./web/assets:/usr/share/nginx/html/", compose)
         self.assertIn("DASHBOARD_OUTPUT_PATH: /publish/dashboard.svg", compose)
         self.assertIn("DASHBOARD_JSON_OUTPUT_PATH: /publish/dashboard.json", compose)
+
+    def test_nginx_routes_separate_read_only_mounts(self):
+        nginx = NGINX.read_text(encoding="utf-8")
+        self.assertIn("root /usr/share/nginx/html;", nginx)
+        self.assertIn("location = /dashboard.html", nginx)
+        self.assertIn(
+            "alias /usr/share/nginx/dashboard-shell/dashboard.html;", nginx)
+        self.assertIn("location /assets/", nginx)
+        self.assertIn("alias /usr/share/nginx/dashboard-shell/assets/;", nginx)
 
 
 if __name__ == "__main__":

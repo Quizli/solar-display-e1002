@@ -50,7 +50,10 @@ default. After deployment, verify both files without exposing configuration:
 
 ```bash
 sudo docker compose exec -T dashboard-publisher python3 -m dashboard once
-sudo docker compose exec -T web python3 -c 'import json; json.load(open("/usr/share/nginx/html/dashboard.json"))'
+sudo docker compose exec -T web test -r /usr/share/nginx/dashboard-shell/dashboard.html
+curl -fsS http://127.0.0.1:8088/dashboard.html >/dev/null
+curl -fsS http://127.0.0.1:8088/dashboard.json | grep -q '"schema_version"'
+curl -fsS http://127.0.0.1:8088/dashboard.svg >/dev/null
 ```
 
 ## Backup
