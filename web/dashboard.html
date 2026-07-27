@@ -23,22 +23,22 @@
       <article class="glass hero solar" data-component="solar" data-state="loading">
         <div><h1 class="eyebrow">AKTUELLE SOLARLEISTUNG</h1><p class="hero-value placeholder"><span data-field="live.solar_power_kw">—</span><small>kW</small></p></div>
         <svg class="hero-icon" aria-hidden="true"><use href="assets/icons.svg#sun"></use></svg>
-        <div class="segments" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="segments" data-segments-for="live.solar_power_kw" aria-hidden="true"><span data-segment="1"></span><span data-segment="2"></span><span data-segment="3"></span><span data-segment="4"></span><span data-segment="5"></span><span data-segment="6"></span><span data-segment="7"></span><span data-segment="8"></span><span data-segment="9"></span><span data-segment="10"></span><span data-segment="11"></span><span data-segment="12"></span><span data-segment="13"></span><span data-segment="14"></span><span data-segment="15"></span><span data-segment="16"></span><span data-segment="17"></span><span data-segment="18"></span><span data-segment="19"></span><span data-segment="20"></span></div>
       </article>
       <article class="glass hero battery" data-component="battery" data-state="loading" data-direction="unavailable">
         <div><h2 class="eyebrow">BATTERIESTATUS</h2><p class="hero-value small placeholder"><span data-field="live.battery_state_of_charge_percent">—</span><small>%</small></p></div>
         <svg class="hero-icon" aria-hidden="true"><use href="assets/icons.svg#battery"></use></svg>
-        <div class="segments" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="segments" data-segments-for="live.battery_state_of_charge_percent" aria-hidden="true"><span data-segment="1"></span><span data-segment="2"></span><span data-segment="3"></span><span data-segment="4"></span><span data-segment="5"></span><span data-segment="6"></span><span data-segment="7"></span><span data-segment="8"></span><span data-segment="9"></span><span data-segment="10"></span><span data-segment="11"></span><span data-segment="12"></span><span data-segment="13"></span><span data-segment="14"></span><span data-segment="15"></span><span data-segment="16"></span><span data-segment="17"></span><span data-segment="18"></span><span data-segment="19"></span><span data-segment="20"></span></div>
       </article>
     </section>
 
     <section data-component="energy-flows" aria-labelledby="flows-title">
       <h2 class="section-title" id="flows-title">ENERGIEFLÜSSE JETZT</h2>
       <div class="flow-grid">
-        <article class="glass flow flow-house" data-component="house-consumption" data-state="loading"><h3><i></i>Hausverbrauch</h3><p class="value placeholder"><span data-field="live.house_consumption_kw">—</span><small>kW</small></p></article>
-        <article class="glass flow flow-heat" data-component="heat" data-state="loading"><h3><i></i>Warmwasser / Heizung</h3><p class="value placeholder"><span data-field="live.heat_power_kw">—</span><small>kW</small></p></article>
-        <article class="glass flow flow-battery" data-component="battery-flow" data-state="loading" data-direction="unavailable"><h3><i></i><span data-field="live.battery_flow.direction">Batteriefluss</span></h3><p class="value placeholder"><span data-field="live.battery_flow.magnitude_kw">—</span><small>kW</small></p></article>
-        <article class="glass flow flow-grid-power" data-component="grid-flow" data-state="loading" data-direction="unavailable"><h3><i></i><span data-field="live.grid_flow.direction">Netzfluss</span></h3><p class="value placeholder"><span data-field="live.grid_flow.magnitude_kw">—</span><small>kW</small></p></article>
+        <article class="glass flow flow-house" data-component="house-consumption" data-state="loading"><h3><i></i>Hausverbrauch</h3><p class="value placeholder"><span data-field="live.house_consumption_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg></p></article>
+        <article class="glass flow flow-heat" data-component="heat" data-state="loading"><h3><i></i>Warmwasser / Heizung</h3><p class="value placeholder"><span data-field="live.heat_power_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg></p></article>
+        <article class="glass flow flow-battery" data-component="battery-flow" data-state="loading" data-direction="unavailable"><h3><i></i><span data-field="live.battery_flow.direction">Batteriefluss</span></h3><p class="value placeholder"><span data-field="live.battery_flow.magnitude_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg><svg class="direction direction-up" aria-hidden="true"><use href="assets/icons.svg#arrow-up"></use></svg></p></article>
+        <article class="glass flow flow-grid-power" data-component="grid-flow" data-state="loading" data-direction="unavailable"><h3><i></i><span data-field="live.grid_flow.direction">Netzfluss</span></h3><p class="value placeholder"><span data-field="live.grid_flow.magnitude_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg><svg class="direction direction-up" aria-hidden="true"><use href="assets/icons.svg#arrow-up"></use></svg></p></article>
       </div>
     </section>
 
@@ -56,14 +56,14 @@
 
       <aside class="glass insight" data-component="insight" data-state="loading" aria-labelledby="insight-title">
         <svg aria-hidden="true"><use href="assets/icons.svg#sparkles"></use></svg><p class="eyebrow">INSIGHT</p>
-        <h2 id="insight-title" class="placeholder"><span data-field="insight.line_1">—</span><br><span data-field="insight.line_2"></span></h2>
-        <p class="placeholder insight-copy">Daten werden geladen.</p>
+        <h2 id="insight-title" class="placeholder" data-field="insight.line_1">—</h2>
+        <p class="placeholder insight-copy" data-field="insight.line_2">—</p>
       </aside>
     </div>
 
     <section class="glass comparison" data-component="historical-comparison" data-state="loading" data-direction="unavailable" aria-labelledby="comparison-title">
       <h2 class="section-title" id="comparison-title">HISTORISCHER VERGLEICH</h2>
-      <p class="placeholder"><svg aria-hidden="true"><use href="assets/icons.svg#trend-up"></use></svg><span data-field="historical_comparison.statement">—</span></p>
+      <p class="placeholder"><svg class="direction direction-up" aria-hidden="true"><use href="assets/icons.svg#trend-up"></use></svg><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#trend-down"></use></svg><svg class="direction direction-similar" aria-hidden="true"><use href="assets/icons.svg#move-right"></use></svg><span data-field="historical_comparison.statement">—</span></p>
     </section>
     <footer data-component="system-status" data-state="loading" role="status" aria-live="polite"><span class="status-dot"></span><span data-field="data.timestamp">Systemstatus wird geladen</span></footer>
   </main>

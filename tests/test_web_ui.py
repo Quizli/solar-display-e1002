@@ -85,6 +85,45 @@ class WebDashboardShellTests(unittest.TestCase):
         self.assertIn("env(safe-area-inset", css)
         self.assertIn("-webkit-backdrop-filter", css)
         self.assertIn("prefers-reduced-motion", css)
+        self.assertIn(".battery{min-height:112px", css)
+        self.assertIn(".hero,.battery{min-height:180px}", css)
+
+    def test_fresh_status_remains_visible_and_degraded_is_component_scoped(self):
+        css = CSS.read_text(encoding="utf-8")
+        self.assertNotIn("[data-state=fresh] .status-pill{display:none}", css)
+        self.assertIn("[data-state=fresh] .status-pill{display:flex", css)
+        self.assertIn("[data-component]:not(.dashboard)[data-state=degraded]", css)
+        self.assertNotIn(".dashboard[data-state=degraded]", css)
+
+    def test_loading_segments_are_neutral_and_have_twenty_slots_each(self):
+        css = CSS.read_text(encoding="utf-8")
+        for component in ("solar", "battery"):
+            match = re.search(
+                rf'<article[^>]+data-component="{component}".*?</article>',
+                self.source, re.DOTALL)
+            self.assertIsNotNone(match)
+            self.assertEqual(match.group(0).count("data-segment="), 20)
+            self.assertNotIn("data-active=\"true\"", match.group(0))
+        self.assertNotIn("nth-child", css)
+        self.assertIn("span[data-active=true]", css)
+
+    def test_direction_indicators_use_explicit_direction_states(self):
+        css = CSS.read_text(encoding="utf-8")
+        for icon in ("arrow-down", "arrow-up", "trend-up", "trend-down", "move-right"):
+            self.assertIn("icons.svg#" + icon, self.source)
+        for direction in ("charging", "discharging", "importing", "exporting",
+                          "higher", "lower", "similar"):
+            self.assertIn("data-direction=" + direction, css)
+        self.assertIn('data-direction="unavailable"', self.source)
+        self.assertNotRegex(self.source + css, r"power_kw\s*[<>]=?\s*0")
+
+    def test_insight_contract_fields_have_distinct_elements(self):
+        insight = re.search(
+            r'<aside[^>]+data-component="insight".*?</aside>', self.source,
+            re.DOTALL).group(0)
+        self.assertRegex(insight, r'<h2[^>]+data-field="insight\.line_1"')
+        self.assertRegex(insight, r'<p[^>]+data-field="insight\.line_2"')
+        self.assertNotIn("Daten werden geladen.", insight)
 
     def test_compose_serves_shell_alongside_publisher_outputs(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
