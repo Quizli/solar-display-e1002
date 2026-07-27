@@ -114,14 +114,22 @@
   function chartGeometry(container) {
     return { width: Math.max(240, Math.round(container.clientWidth || 360)), height: Math.max(120, Math.round(container.clientHeight || 150)), fontSize: 11 };
   }
+  function chartLayout(container, model) {
+    const geometry = chartGeometry(container);
+    const axisValues = [model.top, 0, model.bottom].filter((value, index, all) => all.indexOf(value) === index);
+    const axisLabels = axisValues.map(value => `${numberFormats.decimal.format(value)} kW`);
+    const labelWidth = Math.max(...axisLabels.map(label => label.length * geometry.fontSize * 0.62));
+    const left = Math.ceil(labelWidth + 14);
+    return { ...geometry, axisValues, axisLabels, labelWidth, left, labelX: left - 7, labelStart: left - 7 - labelWidth, right: 8, top: 12, bottom: 26 };
+  }
   function renderChart(container, model) {
     container.replaceChildren();
     if (!model.points.some(point => finite(point.solar) || finite(point.house) || finite(point.battery))) { const message = document.createElement("span"); message.textContent = "Tagesverlauf nicht verfügbar"; container.appendChild(message); container.setAttribute("aria-label", message.textContent); return; }
-    const NS = "http://www.w3.org/2000/svg", geometry = chartGeometry(container), width = geometry.width, height = geometry.height, left = 42, right = 8, top = 12, bottom = 26;
+    const NS = "http://www.w3.org/2000/svg", geometry = chartLayout(container, model), { width, height, left, right, top, bottom } = geometry;
     const svg = document.createElementNS(NS, "svg"); svg.setAttribute("viewBox", `0 0 ${width} ${height}`); svg.setAttribute("preserveAspectRatio", "xMidYMid meet"); svg.setAttribute("aria-hidden", "true");
     const x = minute => left + minute / 1440 * (width - left - right), y = value => top + (model.top - value) / (model.top - model.bottom) * (height - top - bottom);
     function add(name, attrs, text) { const node = document.createElementNS(NS, name); Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, String(value))); if (name === "text") node.setAttribute("font-size", `${geometry.fontSize}px`); if (text !== undefined) node.textContent = text; svg.appendChild(node); return node; }
-    [model.top, 0, model.bottom].filter((value, index, all) => all.indexOf(value) === index).forEach(value => { add("line", { x1: left, x2: width - right, y1: y(value), y2: y(value), class: value === 0 ? "chart-zero" : "chart-grid" }); add("text", { x: left - 7, y: y(value) + 4, "text-anchor": "end", class: "chart-axis" }, `${numberFormats.decimal.format(value)} kW`); });
+    geometry.axisValues.forEach((value, index) => { add("line", { x1: left, x2: width - right, y1: y(value), y2: y(value), class: value === 0 ? "chart-zero" : "chart-grid" }); add("text", { x: geometry.labelX, y: y(value) + 4, "text-anchor": "end", class: "chart-axis" }, geometry.axisLabels[index]); });
     [0, 360, 720, 1080, 1440].forEach(minute => add("text", { x: x(minute), y: height - 7, "text-anchor": minute === 0 ? "start" : minute === 1440 ? "end" : "middle", class: "chart-axis" }, `${String(minute / 60).padStart(2, "0")}:00`));
     pathSequences(model, "solar", x, y).forEach(sequence => { if (sequence.length > 1) add("path", { d: `M${sequence.map(pair => pair.join(",")).join(" L")} L${sequence.at(-1)[0]},${y(0)} L${sequence[0][0]},${y(0)} Z`, class: "chart-area-solar" }); });
     [["solar", "chart-line-solar"], ["house", "chart-line-house"], ["battery", "chart-line-battery"]].forEach(([key, css]) => pathSequences(model, key, x, y).forEach(sequence => { if (sequence.length === 1) add("circle", { cx: sequence[0][0], cy: sequence[0][1], r: 2.5, class: `chart-line ${css}` }); else add("path", { d: `M${sequence.map(pair => pair.join(",")).join(" L")}`, class: `chart-line ${css}` }); }));
@@ -156,7 +164,7 @@
     return { refresh, stop, isRunning: () => running, lastGood: () => lastGood };
   }
 
-  const api = Object.freeze({ DATA_URL, SCHEMA_VERSION, REFRESH_MS, REQUEST_TIMEOUT_MS, SOLAR_CAPACITY_KWP, SEGMENT_COUNT, TIME_ZONE, formatNumber, formatDate, formatTime, formatAge, segmentCount, validPayload, chartModel, pathSequences, chartGeometry, buildViewModel, createController });
+  const api = Object.freeze({ DATA_URL, SCHEMA_VERSION, REFRESH_MS, REQUEST_TIMEOUT_MS, SOLAR_CAPACITY_KWP, SEGMENT_COUNT, TIME_ZONE, formatNumber, formatDate, formatTime, formatAge, segmentCount, validPayload, chartModel, pathSequences, chartGeometry, chartLayout, buildViewModel, createController });
   if (typeof window !== "undefined") window.SolarDashboard = api;
   if (typeof document !== "undefined") { const root = document.querySelector('[data-component="dashboard"]'); if (root) createController(root).refresh(); }
 }());

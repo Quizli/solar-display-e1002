@@ -339,7 +339,8 @@ Der responsive Tagesverlauf wird direkt als lokales SVG erzeugt: Solar gelb mit
 Fläche, Hausverbrauch blau und Batteriefluss grün um eine sichtbare Nulllinie.
 Die Achse reicht fest von 00:00 bis 24:00; Datenlücken und `null`-Werte werden
 nicht interpoliert. Eine proportionale ViewBox hält Achsentexte auch auf mobilen
-Viewports unverzerrt. Es gibt keine Frameworks, externen Schriftdateien,
+Viewports unverzerrt; der linke Plotrand wird aus der längsten Y-Achsenbeschriftung
+berechnet, damit weder führende Ziffern noch Minuszeichen abgeschnitten werden. Es gibt keine Frameworks, externen Schriftdateien,
 Chartbibliotheken, CDNs, Tracker oder sonstigen Drittkomponenten zur Laufzeit.
 
 Das Layout ist mobile-first. Ab 700 px stehen Hero-Karten, Energieflüsse sowie

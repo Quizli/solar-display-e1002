@@ -64,7 +64,8 @@ class WebDashboardJavaScriptTests(unittest.TestCase):
 const weather=clone(good);weather.status.overall="degraded";weather.status.affected_components=["weather"];weather.status.components.weather="invalid";weather.header.weather_condition=null;weather.header.sunshine_hours=null;weather.header.sunrise=null;weather.header.sunset=null;
 const invalid=[];let p;p=clone(good);delete p.live.grid_flow;invalid.push(p);p=clone(good);p.data.age_seconds="8";invalid.push(p);p=clone(good);p.schema_version="2.0";invalid.push(p);p=clone(good);p.live.battery_flow.direction="full";invalid.push(p);p=clone(good);p.chart.series[0].start_at="bad";invalid.push(p);
 const model=api.chartModel(good.chart.series),x=v=>v,y=v=>v,weatherView=api.buildViewModel(weather);
-process.stdout.write(JSON.stringify({formats:[api.formatTime(null),api.formatDate(null),api.formatTime(undefined),api.formatDate(""),api.formatTime(false),api.formatDate("bad")],invalid:invalid.map(api.validPayload),weatherValid:api.validPayload(weather),weather:weatherView,chart:{bottom:model.bottom,solar:api.pathSequences(model,"solar",x,y).length,house:api.pathSequences(model,"house",x,y).length},geometry320:api.chartGeometry({clientWidth:280,clientHeight:125}),geometry390:api.chartGeometry({clientWidth:350,clientHeight:125})}));'''
+const clippingModel={top:20,bottom:-5},axisLayouts=[280,350,780,1200].map(width=>api.chartLayout({clientWidth:width,clientHeight:125},clippingModel));
+process.stdout.write(JSON.stringify({axisLayouts,formats:[api.formatTime(null),api.formatDate(null),api.formatTime(undefined),api.formatDate(""),api.formatTime(false),api.formatDate("bad")],invalid:invalid.map(api.validPayload),weatherValid:api.validPayload(weather),weather:weatherView,chart:{bottom:model.bottom,solar:api.pathSequences(model,"solar",x,y).length,house:api.pathSequences(model,"house",x,y).length},geometry320:api.chartGeometry({clientWidth:280,clientHeight:125}),geometry390:api.chartGeometry({clientWidth:350,clientHeight:125})}));'''
         cls.result = run_js(pure)
 
         controller = JS_BOOT + DOM_HELPER + f"const good={payload};" + r'''
@@ -137,6 +138,13 @@ process.stdout.write(JSON.stringify({formats:[api.formatTime(null),api.formatDat
         self.assertEqual(degraded["components"]['[data-component="weather"]'], "degraded")
         self.assertEqual(degraded["components"]['[data-component="solar"]'], "fresh")
         self.assertEqual(degraded["status"], "EINGESCHRÄNKT · 8 s")
+
+    def test_y_axis_labels_stay_inside_viewbox_at_all_target_widths(self):
+        for layout in self.result["axisLayouts"]:
+            self.assertGreaterEqual(layout["labelStart"], 0)
+            self.assertGreater(layout["left"], layout["labelWidth"])
+            self.assertLess(layout["left"], layout["width"] - layout["right"])
+            self.assertEqual(layout["axisLabels"], ["20.0 kW", "0.0 kW", "-5.0 kW"])
 
     def test_chart_gap_negative_battery_and_mobile_font_geometry(self):
         self.assertLess(self.result["chart"]["bottom"], 0)
