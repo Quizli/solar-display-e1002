@@ -300,6 +300,29 @@ Sonnenstunden und eine direkte E1002-Upload-API sind nicht Bestandteil.
 Fact-Auswahlen werden dagegen pro lokaler Stunde dauerhaft gespeichert; zusätzlich
 können nach mehreren abgeschlossenen Tagen historische Ertragsvergleiche erscheinen.
 
+### Web-Dashboard-Oberfläche
+
+Die statische Produktionsoberfläche liegt in `web/dashboard.html`; ihr
+Solar-Glass-Theme und das lokale SVG-Sprite liegen unter `web/assets/`. Compose
+bindet diese Dateien in denselben Nginx-Dokumentstamm wie die unverändert aus
+`publish/` bereitgestellten Dateien `dashboard.json` und `dashboard.svg` ein.
+Damit ist keine zweite Webanwendung und kein zusätzlicher Service nötig.
+
+Die semantischen Komponenten sind mit `data-component`, Vertragsfelder mit
+`data-field` und gerichtete Energieflüsse mit `data-direction` vorbereitet.
+`data-state` unterstützt `loading`, `fresh`, `degraded`, `stale`, `missing` und
+`offline`. Die Produktionsseite startet ausschliesslich im ruhigen
+Loading-Zustand. Sie enthält weder Beispielwerte noch JavaScript, Datenabruf,
+automatische Aktualisierung oder Chartbibliothek; diese Datenbindung folgt in
+einem separaten PR.
+
+Das Layout ist mobile-first. Ab 700 px stehen Hero-Karten, Energieflüsse sowie
+Tagesverlauf und Insight nebeneinander. Ab 1050 px wird der Tagesverlauf zur
+grossen Desktop-Hauptfläche, während Bilanz und Insight den Seitenbereich
+bilden. Safe-Area-Inset, ein 320-px-Fallback und eine undurchsichtige
+`backdrop-filter`-Fallbackfläche sind enthalten. Die verwendeten Lucide-Symbole
+und ihre ISC-Lizenz sind in `web/THIRD_PARTY_NOTICES.md` dokumentiert.
+
 ### Docker-Build-Kontext und Dateirechte
 
 `.gitignore` verhindert, dass lokale Konfiguration und Laufzeitdaten versehentlich
