@@ -323,11 +323,12 @@ Die semantischen Komponenten werden über `data-component`, Vertragsfelder über
 `data-field` und gerichtete Energieflüsse ausschliesslich über die publizierten
 `direction`-Felder gebunden. `data-state` unterstützt `loading`, `fresh`,
 `degraded`, `stale`, `missing` und `offline`. Komponentenfehler bleiben lokal;
-Payloads werden vor der Darstellung vollständig validiert und erst als fertiges
-View-Model atomar ins DOM übernommen. Strukturell oder typmässig ungültige
+Payloads werden vor der Darstellung vollständig validiert; dabei wird auch der
+reale Wetterstatus `invalid` als komponentenbezogener Degraded-Fall unterstützt.
+Erst ein fertiges View-Model wird atomar ins DOM übernommen. Strukturell oder typmässig ungültige
 Payloads werden ohne sichtbare Teilaktualisierung verworfen. Bei Netzwerk-,
-HTTP- oder JSON-Fehlern bleiben nach dem ersten Erfolg die letzten vollständig
-validierten Werte sichtbar; der Offline-Stand verwendet `generated_at`. Eine
+HTTP-, JSON-, Schema- oder Typfehlern bleiben nach dem ersten Erfolg die letzten
+vollständig validierten Werte sichtbar; der Offline-Stand verwendet `generated_at`. Eine
 erfolgreiche Antwort stellt den aktuellen Zustand automatisch wieder her. Fresh
 zeigt das gerundete `data.age_seconds`. Zahlen und Zeiten werden in Schweizer
 Darstellung beziehungsweise stets in `Europe/Zurich` formatiert.

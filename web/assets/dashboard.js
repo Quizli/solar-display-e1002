@@ -10,7 +10,11 @@
   const TIME_ZONE = "Europe/Zurich";
   const DASH = "—";
   const OVERALL_STATES = ["fresh", "degraded", "stale", "missing"];
-  const COMPONENT_STATES = ["fresh", "cached", "available", "degraded", "stale", "missing", "offline"];
+  const COMPONENT_STATES = Object.freeze({
+    solar_data: ["fresh", "stale", "offline"], weather: ["fresh", "cached", "missing", "invalid"],
+    battery: ["available", "missing"], heat: ["available", "missing"], chart: ["available", "missing"],
+    insight: ["available", "missing"], historical_comparison: ["available", "missing"]
+  });
   const BATTERY_DIRECTIONS = ["charging", "discharging", "idle", "unavailable"];
   const GRID_DIRECTIONS = ["exporting", "importing", "idle", "unavailable"];
   const COMPARISON_DIRECTIONS = ["higher", "lower", "similar"];
@@ -65,7 +69,7 @@
     const data = payload.data, status = payload.status, header = payload.header, live = payload.live, today = payload.today, chart = payload.chart, insight = payload.insight;
     if (!record(data) || !(data.timestamp === null || isoInstant(data.timestamp)) || !(data.latest_sample_at === null || isoInstant(data.latest_sample_at)) || !(data.age_seconds === null || (finite(data.age_seconds) && data.age_seconds >= 0))) return false;
     if (!record(status) || !includes(OVERALL_STATES, status.overall) || !includes(["fresh", "stale", "missing"], status.freshness) || !Array.isArray(status.affected_components) || !status.affected_components.every(value => Object.hasOwn(componentMap, value)) || !record(status.components)) return false;
-    if (!Object.keys(componentMap).every(key => includes(COMPONENT_STATES, status.components[key]))) return false;
+    if (!Object.keys(componentMap).every(key => includes(COMPONENT_STATES[key], status.components[key]))) return false;
     if (!record(header) || !isoDate(header.local_date) || !isoInstant(header.local_time) || !nullableString(header.weather_condition) || !nullableNumber(header.sunshine_hours) || !(header.sunrise === null || clockTime(header.sunrise)) || !(header.sunset === null || clockTime(header.sunset))) return false;
     if (!record(live) || ![live.solar_power_kw, live.house_consumption_kw, live.heat_power_kw, live.battery_state_of_charge_percent].every(nullableNumber) || !validFlow(live.battery_flow, BATTERY_DIRECTIONS) || !validFlow(live.grid_flow, GRID_DIRECTIONS)) return false;
     if (!record(today) || ![today.yield_kwh, today.self_consumption_percent, today.co2_avoided_kg].every(nullableNumber)) return false;
@@ -107,13 +111,16 @@
     return { payload, fields, states, overall: payload.status.overall, statusLabel: payload.status.overall === "fresh" ? `LIVE · ${formatAge(payload.data.age_seconds)}` : payload.status.overall === "degraded" ? `EINGESCHRÄNKT · ${formatAge(payload.data.age_seconds)}` : payload.status.overall === "stale" ? `VERALTET · STAND ${formatTime(payload.generated_at)}` : "DATEN NICHT VERFÜGBAR", directions: { battery: batteryDirection, grid: gridDirection, comparison: comparison ? comparison.direction : "unavailable" }, segments: { solar: segmentCount(payload.live.solar_power_kw, SOLAR_CAPACITY_KWP), battery: segmentCount(payload.live.battery_state_of_charge_percent, 100) }, chart: chartModel(payload.chart.series) };
   }
 
-  function renderChart(container, model, state) {
+  function chartGeometry(container) {
+    return { width: Math.max(240, Math.round(container.clientWidth || 360)), height: Math.max(120, Math.round(container.clientHeight || 150)), fontSize: 11 };
+  }
+  function renderChart(container, model) {
     container.replaceChildren();
     if (!model.points.some(point => finite(point.solar) || finite(point.house) || finite(point.battery))) { const message = document.createElement("span"); message.textContent = "Tagesverlauf nicht verfügbar"; container.appendChild(message); container.setAttribute("aria-label", message.textContent); return; }
-    const NS = "http://www.w3.org/2000/svg", width = 360, height = 150, left = 40, right = 8, top = 10, bottom = 24;
+    const NS = "http://www.w3.org/2000/svg", geometry = chartGeometry(container), width = geometry.width, height = geometry.height, left = 42, right = 8, top = 12, bottom = 26;
     const svg = document.createElementNS(NS, "svg"); svg.setAttribute("viewBox", `0 0 ${width} ${height}`); svg.setAttribute("preserveAspectRatio", "xMidYMid meet"); svg.setAttribute("aria-hidden", "true");
     const x = minute => left + minute / 1440 * (width - left - right), y = value => top + (model.top - value) / (model.top - model.bottom) * (height - top - bottom);
-    function add(name, attrs, text) { const node = document.createElementNS(NS, name); Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, String(value))); if (text !== undefined) node.textContent = text; svg.appendChild(node); return node; }
+    function add(name, attrs, text) { const node = document.createElementNS(NS, name); Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, String(value))); if (name === "text") node.setAttribute("font-size", `${geometry.fontSize}px`); if (text !== undefined) node.textContent = text; svg.appendChild(node); return node; }
     [model.top, 0, model.bottom].filter((value, index, all) => all.indexOf(value) === index).forEach(value => { add("line", { x1: left, x2: width - right, y1: y(value), y2: y(value), class: value === 0 ? "chart-zero" : "chart-grid" }); add("text", { x: left - 7, y: y(value) + 4, "text-anchor": "end", class: "chart-axis" }, `${numberFormats.decimal.format(value)} kW`); });
     [0, 360, 720, 1080, 1440].forEach(minute => add("text", { x: x(minute), y: height - 7, "text-anchor": minute === 0 ? "start" : minute === 1440 ? "end" : "middle", class: "chart-axis" }, `${String(minute / 60).padStart(2, "0")}:00`));
     pathSequences(model, "solar", x, y).forEach(sequence => { if (sequence.length > 1) add("path", { d: `M${sequence.map(pair => pair.join(",")).join(" L")} L${sequence.at(-1)[0]},${y(0)} L${sequence[0][0]},${y(0)} Z`, class: "chart-area-solar" }); });
@@ -125,17 +132,22 @@
     Object.entries(view.states).forEach(([component, value]) => root.querySelector(`[data-component="${component}"]`).setAttribute("data-state", value));
     root.querySelector('[data-component="battery-flow"]').setAttribute("data-direction", view.directions.battery); root.querySelector('[data-component="grid-flow"]').setAttribute("data-direction", view.directions.grid); root.querySelector('[data-component="historical-comparison"]').setAttribute("data-direction", view.directions.comparison);
     [["live.solar_power_kw", view.segments.solar], ["live.battery_state_of_charge_percent", view.segments.battery]].forEach(([field, count]) => root.querySelectorAll(`[data-segments-for="${field}"] [data-segment]`).forEach((node, index) => index < count ? node.setAttribute("data-active", "true") : node.removeAttribute("data-active")));
-    renderChart(root.querySelector('[data-field="chart.series"]'), view.chart, view.states.chart); applyConnectionState(root, view.overall, view.statusLabel); root.setAttribute("aria-busy", "false");
+    renderChart(root.querySelector('[data-field="chart.series"]'), view.chart); applyConnectionState(root, view.overall, view.statusLabel); root.setAttribute("aria-busy", "false");
   }
-  function applyConnectionState(root, state, label) { const pill = root.querySelector('[data-component="data-status"]'), footer = root.querySelector('[data-component="system-status"]'); pill.lastChild.textContent = label; pill.setAttribute("data-state", state); root.setAttribute("data-state", state); footer.setAttribute("data-state", state); footer.querySelector('[data-field="data.timestamp"]').textContent = label; root.setAttribute("aria-busy", "false"); }
+  function applyConnectionState(root, state, label) { const pill = root.querySelector('[data-component="data-status"]'), footer = root.querySelector('[data-component="system-status"]'), globalState = state === "degraded" ? "fresh" : state; pill.lastChild.textContent = label; pill.setAttribute("data-state", state); root.setAttribute("data-state", globalState); footer.setAttribute("data-state", globalState); footer.querySelector('[data-field="data.timestamp"]').textContent = label; root.setAttribute("aria-busy", "false"); }
+  function applyInitialOffline(root) {
+    root.querySelectorAll('[data-segment]').forEach(node => node.removeAttribute("data-active"));
+    const chart = root.querySelector('[data-field="chart.series"]'); chart.replaceChildren(); const message = document.createElement("span"); message.textContent = "Tagesverlauf nicht verfügbar"; chart.appendChild(message); chart.setAttribute("aria-label", message.textContent);
+    applyConnectionState(root, "offline", "OFFLINE");
+  }
 
   function createController(root, options) {
-    const settings = options || {}, fetcher = settings.fetcher || window.fetch.bind(window), schedule = settings.schedule || window.setTimeout.bind(window), cancel = settings.cancel || window.clearTimeout.bind(window), apply = settings.apply || applyViewModel, connection = settings.connection || applyConnectionState;
+    const settings = options || {}, fetcher = settings.fetcher || window.fetch.bind(window), schedule = settings.schedule || window.setTimeout.bind(window), cancel = settings.cancel || window.clearTimeout.bind(window), apply = settings.apply || applyViewModel, connection = settings.connection || applyConnectionState, initialOffline = settings.initialOffline || applyInitialOffline;
     let timer = null, running = false, lastGood = null, stopped = false;
     async function refresh() {
       if (running || stopped) return false; running = true; root.setAttribute("aria-busy", "true"); const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-      try { const response = await fetcher(DATA_URL, { cache: "no-store", signal: controller.signal }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const payload = await response.json(); const view = buildViewModel(payload); if (!view) { root.setAttribute("aria-busy", "false"); return false; } apply(root, view); lastGood = view; }
-      catch (_error) { if (lastGood) connection(root, "offline", `OFFLINE · STAND ${formatTime(lastGood.payload.generated_at)}`); else connection(root, "offline", "OFFLINE"); }
+      try { const response = await fetcher(DATA_URL, { cache: "no-store", signal: controller.signal }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const payload = await response.json(); const view = buildViewModel(payload); if (!view) throw new Error("Ungültiges Dashboard-Payload"); apply(root, view); lastGood = view; }
+      catch (_error) { if (lastGood) connection(root, "offline", `OFFLINE · STAND ${formatTime(lastGood.payload.generated_at)}`); else initialOffline(root); }
       finally { window.clearTimeout(timeout); running = false; if (!stopped) timer = schedule(refresh, REFRESH_MS); }
       return true;
     }
@@ -144,7 +156,7 @@
     return { refresh, stop, isRunning: () => running, lastGood: () => lastGood };
   }
 
-  const api = Object.freeze({ DATA_URL, SCHEMA_VERSION, REFRESH_MS, REQUEST_TIMEOUT_MS, SOLAR_CAPACITY_KWP, SEGMENT_COUNT, TIME_ZONE, formatNumber, formatDate, formatTime, formatAge, segmentCount, validPayload, chartModel, pathSequences, buildViewModel, createController });
+  const api = Object.freeze({ DATA_URL, SCHEMA_VERSION, REFRESH_MS, REQUEST_TIMEOUT_MS, SOLAR_CAPACITY_KWP, SEGMENT_COUNT, TIME_ZONE, formatNumber, formatDate, formatTime, formatAge, segmentCount, validPayload, chartModel, pathSequences, chartGeometry, buildViewModel, createController });
   if (typeof window !== "undefined") window.SolarDashboard = api;
   if (typeof document !== "undefined") { const root = document.querySelector('[data-component="dashboard"]'); if (root) createController(root).refresh(); }
 }());

@@ -112,8 +112,8 @@ class WebDashboardShellTests(unittest.TestCase):
 
     def test_fresh_status_remains_visible_and_degraded_is_component_scoped(self):
         css = CSS.read_text(encoding="utf-8")
-        self.assertNotIn("[data-state=fresh] .status-pill{display:none}", css)
-        self.assertIn("[data-state=fresh] .status-pill{display:flex", css)
+        self.assertNotIn(".status-pill[data-state=fresh]{display:none}", css)
+        self.assertIn(".status-pill[data-state=fresh]{display:flex", css)
         self.assertIn(".glass[data-state=degraded],.sun-data[data-state=degraded]", css)
         self.assertNotIn(".dashboard[data-state=degraded]", css)
         self.assertNotIn("footer[data-state=degraded]", css)
