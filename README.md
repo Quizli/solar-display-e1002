@@ -280,7 +280,10 @@ Fact wie das eInk-Dashboard. `historical_comparison` wird unabhängig davon aus
 der bestehenden History-Logik ermittelt und ist entweder `null` oder trennt Typ,
 Aussage, Bezugszeitraum, Vergleichs- und Basiswert, prozentuale Differenz und
 Richtung (`higher`, `lower`, `similar`). Vergleichstag und Anzahl Basistage
-bleiben, soweit vorhanden, als eigene Felder erhalten.
+bleiben, soweit vorhanden, als eigene Felder erhalten. Ist ein historischer Fact
+bereits das aktuelle `insight`, wird für `historical_comparison` der nächste
+inhaltlich unterschiedliche Kandidat verwendet; ohne Alternative ist der Wert
+`null`, statt dieselbe Aussage doppelt zu publizieren.
 
 Der JSON-Takt beträgt standardmässig 15 Sekunden
 (`DASHBOARD_JSON_REFRESH_SECONDS`), passend zum 10-Sekunden-Collector. Der

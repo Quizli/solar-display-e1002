@@ -7,11 +7,13 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from dashboard.live_view import build_live_view
 from dashboard.facts.catalog import FACTS
 from dashboard.facts.engine import hour_key
+from dashboard.facts.history import HistoricalCandidate
 from dashboard.publisher import publish_view
 from dashboard.web_publisher import build_web_payload, publish_web_payload
 from fronius.model import LiveData
@@ -186,6 +188,50 @@ class WebPublisherTest(unittest.TestCase):
         self.assertEqual(comparison["reference_period"], "today")
         self.assertNotEqual(comparison["statement"], " ".join(
             (payload["insight"]["line_1"], payload["insight"]["line_2"])))
+
+    def test_historical_insight_is_not_duplicated_by_comparison(self):
+        self.snapshot()
+        snapshot = self.database.latest_snapshot()
+        view = build_live_view(self.database, self.now, snapshot=snapshot)
+        view["story_status"]["fact_id"] = "HIST_RECORD"
+        view["display"]["story_line_1"] = "Aktueller Rekord."
+        view["display"]["story_line_2"] = "Bisheriger Rekord."
+        candidates = [
+            HistoricalCandidate("HIST_RECORD", {
+                "reference_day": "2026-07-24", "baseline_energy_kwh": 10,
+            }),
+            HistoricalCandidate("HIST_AVERAGE", {
+                "reference_day": "2026-07-25", "period": "today",
+                "comparison_energy_kwh": 12, "baseline_energy_kwh": 8,
+                "baseline_days": 4,
+            }),
+        ]
+
+        def rendered(fact_id, _context, _details):
+            lines = (("Aktueller Rekord.", "Bisheriger Rekord.")
+                     if fact_id == "HIST_RECORD" else
+                     ("Vergleich zum Schnitt.", "Heute liegt darüber."))
+            return SimpleNamespace(line_1=lines[0], line_2=lines[1])
+
+        with patch("dashboard.web_publisher.eligible_historical_candidates",
+                   return_value=candidates), patch(
+                       "dashboard.web_publisher.render_historical",
+                       side_effect=rendered):
+            payload = build_web_payload(
+                self.database, view, snapshot, self.now)
+
+        comparison = payload["historical_comparison"]
+        insight_text = " ".join((payload["insight"]["line_1"],
+                                 payload["insight"]["line_2"]))
+        self.assertEqual(comparison["type"], "HIST_AVERAGE")
+        self.assertNotEqual(comparison["type"], payload["insight"]["fact_id"])
+        self.assertNotEqual(comparison["statement"], insight_text)
+
+        with patch("dashboard.web_publisher.eligible_historical_candidates",
+                   return_value=candidates[:1]):
+            without_alternative = build_web_payload(
+                self.database, view, snapshot, self.now)
+        self.assertIsNone(without_alternative["historical_comparison"])
 
     def test_atomic_write_permissions_privacy_and_svg_regression(self):
         self.snapshot()

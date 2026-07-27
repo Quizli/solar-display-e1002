@@ -37,34 +37,39 @@ def _flow(value, positive, negative, available=True):
     return {"power_kw": value, "magnitude_kw": abs(value), "direction": direction}
 
 
-def _historical(database, now, day_yield, solar_power, sun):
+def _historical(database, now, day_yield, solar_power, sun,
+                insight_fact_id=None, insight_statement=None):
     context = build_fact_context(database, now, day_yield, solar_power, sun)
     candidates = eligible_historical_candidates(database, context)
-    if not candidates:
-        return None
-    candidate = candidates[0]
-    details = candidate.context
-    rendered = render_historical(candidate.fact_id, context, details)
-    if rendered is None:
-        return None
-    value = _number(details.get("comparison_energy_kwh", context.today_energy_kwh))
-    baseline = _number(details.get("baseline_energy_kwh"))
-    if value is not None and baseline is not None and baseline > 0:
-        difference_percent, direction = historical_difference(value, baseline)
-    else:
-        difference_percent, direction = None, None
-    return {
-        "type": candidate.fact_id,
-        "statement": " ".join((rendered.line_1, rendered.line_2)),
-        "direction": direction,
-        "difference_percent": difference_percent,
-        "comparison_value_kwh": value,
-        "baseline_kwh": baseline,
-        "reference_period": details.get("period", "today"),
-        "reference_day": details.get("reference_day"),
-        "comparison_day": details.get("comparison_day"),
-        "baseline_days": details.get("baseline_days"),
-    }
+    for candidate in candidates:
+        if candidate.fact_id == insight_fact_id:
+            continue
+        details = candidate.context
+        rendered = render_historical(candidate.fact_id, context, details)
+        if rendered is None:
+            continue
+        statement = " ".join((rendered.line_1, rendered.line_2))
+        if statement == insight_statement:
+            continue
+        value = _number(details.get("comparison_energy_kwh", context.today_energy_kwh))
+        baseline = _number(details.get("baseline_energy_kwh"))
+        if value is not None and baseline is not None and baseline > 0:
+            difference_percent, direction = historical_difference(value, baseline)
+        else:
+            difference_percent, direction = None, None
+        return {
+            "type": candidate.fact_id,
+            "statement": statement,
+            "direction": direction,
+            "difference_percent": difference_percent,
+            "comparison_value_kwh": value,
+            "baseline_kwh": baseline,
+            "reference_period": details.get("period", "today"),
+            "reference_day": details.get("reference_day"),
+            "comparison_day": details.get("comparison_day"),
+            "baseline_days": details.get("baseline_days"),
+        }
+    return None
 
 
 def _sun_from_view(view, local_day):
@@ -122,10 +127,14 @@ def build_web_payload(database, view, snapshot, now=None):
 
     battery_available = bool(snapshot and snapshot.battery_available)
     heat_available = bool(snapshot and snapshot.heat_available)
+    insight_statement = " ".join(
+        part for part in (display.get("story_line_1"), display.get("story_line_2"))
+        if part
+    )
     historical = _historical(
         database, now_utc, display.get("day_yield_kwh"),
         snapshot.solar_power_kw if snapshot else None,
-        _sun_from_view(view, local_day))
+        _sun_from_view(view, local_day), story.get("fact_id"), insight_statement)
     payload = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": now_utc.isoformat(),
