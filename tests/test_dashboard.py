@@ -353,6 +353,73 @@ class DashboardTest(unittest.TestCase):
                     self.assertEqual(story.selection_source,
                                      "previous_hour_bridge")
 
+    def test_previous_hour_bridge_reuses_historical_yesterday_until_anchor(self):
+        now = datetime(2026, 7, 25, 11, 5, tzinfo=timezone.utc)
+        current_hour = now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
+        previous_hour = (current_hour.astimezone(timezone.utc) -
+                         timedelta(hours=1)).astimezone(ZURICH)
+        payload = json.dumps({
+            "reference_day": "2026-07-24",
+            "period": "yesterday",
+            "comparison_day": "2026-07-23",
+            "comparison_energy_kwh": 42,
+            "baseline_energy_kwh": 35,
+        })
+        self.db.store_fact_selection(
+            hour_key(previous_hour), previous_hour, "HIST_YESTERDAY", "history",
+            42, context_json=payload)
+
+        bridged = build_story(self.db, now, 50, 1)
+        self.assertEqual(bridged.fact_id, "HIST_YESTERDAY")
+        self.assertEqual(bridged.selection_energy_kwh, 42)
+        self.assertEqual(bridged.selection_source, "previous_hour_bridge")
+        self.assertTrue(bridged.selection_persisted)
+        self.assertIsNone(self.db.get_fact_selection(hour_key(current_hour)))
+
+        self.aggregate(now.replace(minute=0), 1, 1, 0, 0, 0, 1, energy=50)
+        selected = build_story(self.db, now, 50, 1)
+        self.assertEqual(selected.selection_source, "new")
+        self.assertNotIn(selected.fact_id, {"HIST_YESTERDAY", "TECH"})
+        self.assertIsNotNone(self.db.get_fact_selection(hour_key(current_hour)))
+
+    def test_previous_hour_bridge_rerenders_historical_record_with_current_yield(self):
+        now = datetime(2026, 7, 25, 11, 5, tzinfo=timezone.utc)
+        current_hour = now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
+        previous_hour = (current_hour.astimezone(timezone.utc) -
+                         timedelta(hours=1)).astimezone(ZURICH)
+        payload = json.dumps({
+            "reference_day": "2026-07-24",
+            "baseline_energy_kwh": 40,
+        })
+        self.db.store_fact_selection(
+            hour_key(previous_hour), previous_hour, "HIST_RECORD", "history",
+            45, context_json=payload)
+
+        first = build_story(self.db, now, 50, 1)
+        updated = build_story(self.db, now + timedelta(minutes=1), 55, 1)
+        self.assertEqual(first.selection_source, "previous_hour_bridge")
+        self.assertEqual(updated.selection_source, "previous_hour_bridge")
+        self.assertIn("50", first.line_1)
+        self.assertIn("55", updated.line_1)
+        self.assertNotEqual(first.line_1, updated.line_1)
+        self.assertIsNone(self.db.get_fact_selection(hour_key(current_hour)))
+
+    def test_previous_hour_bridge_ignores_invalid_historical_context(self):
+        now = datetime(2026, 7, 25, 11, 5, tzinfo=timezone.utc)
+        current_hour = now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
+        previous_hour = (current_hour.astimezone(timezone.utc) -
+                         timedelta(hours=1)).astimezone(ZURICH)
+        for context_json in (None, "not-json"):
+            with self.subTest(context_json=context_json):
+                self.db.connection.execute("DELETE FROM fact_history")
+                self.db.store_fact_selection(
+                    hour_key(previous_hour), previous_hour, "HIST_YESTERDAY",
+                    "history", 42, context_json=context_json)
+                story = build_story(self.db, now, 50, 1)
+                self.assertNotEqual(story.selection_source,
+                                    "previous_hour_bridge")
+                self.assertIsNone(self.db.get_fact_selection(hour_key(current_hour)))
+
     def test_story_waits_before_first_fact_eligible_morning_bucket(self):
         now = datetime(2026, 7, 25, 4, 25, tzinfo=timezone.utc)
         self.snapshot(now, energy_today=.8)

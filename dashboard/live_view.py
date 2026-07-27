@@ -165,6 +165,17 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
                 source="previous_hour_bridge")
             if bridged:
                 return bridged
+        elif bridge_record and bridge_record.fact_id in HISTORICAL_IDS:
+            bridged = decode_and_render(
+                bridge_record.fact_id, context, bridge_record.context_json)
+            if bridged:
+                return Story(**{
+                    **bridged.__dict__,
+                    "selection_energy_kwh": bridge_record.selection_energy_kwh,
+                    "selection_bucket_start": bridge_record.selection_bucket_start,
+                    "selection_persisted": True,
+                    "selection_source": "previous_hour_bridge",
+                })
 
     used_history = any(item.fact_id in HISTORICAL_IDS for item in
                        database.fact_selections_for_local_day(now_local.date()))
