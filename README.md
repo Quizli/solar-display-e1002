@@ -240,6 +240,61 @@ sudo docker compose logs --tail=50 dashboard-publisher
 sudo docker compose exec dashboard-publisher python3 -m dashboard status
 ```
 
+### Öffentlicher JSON-Datenvertrag
+
+Der bestehende Publisher erzeugt zusätzlich atomar `publish/dashboard.json`.
+Diese Datei ist die einzige Datenquelle für das spätere Mobile-Dashboard; Browser
+greifen weder auf Fronius noch auf SQLite zu. Schema-Version **1.0** hat folgende
+öffentliche Top-Level-Struktur:
+
+```text
+schema_version, generated_at, data, status, header, live, today,
+chart, insight, historical_comparison
+```
+
+`data` enthält Datenzeitpunkt, letzten Messzeitpunkt und Alter in Sekunden.
+`status.overall` ist `fresh`, `degraded`, `stale` oder `missing`; der
+Komponentenstatus `offline` kennzeichnet dabei eine ausgefallene Solardatenquelle.
+`affected_components` nennt nur frontendtaugliche Bereiche, keine internen Fehler.
+Optionale nicht verfügbare Werte sind JSON-`null`, Bereiche tragen zusätzlich
+`available` oder `missing`. Nicht endliche Zahlen werden nie publiziert.
+
+`header` enthält den aktuellen lokalen ISO-Zeitpunkt und Tag in `Europe/Zurich`
+und bleibt auch bei fehlenden oder veralteten Messdaten verfügbar. Der davon
+getrennte Messzeitpunkt steht unter `data`. Zusätzlich enthält `header` Wetterzustand,
+Sonnenstunden sowie Sonnenauf- und -untergang. `live` und `today` verwenden kW,
+kWh, kg und Prozent. Die Werte unter `live` stammen aus dem neuesten Raw-Snapshot;
+der Hauswert ist wie im eInk-Dashboard der Verbrauch ohne
+den separat ausgewiesenen Ohmpilot-Wert. Batterie- und Netzfluss enthalten sowohl
+den vorzeichenbehafteten Wert (`power_kw`) als auch `magnitude_kw` und eine
+explizite Richtung. Batterie: positiv/`charging`, negativ/`discharging`;
+Netz: positiv/`exporting`, negativ/`importing`; ausserdem sind `idle` und
+`unavailable` möglich. Damit muss ein Frontend keine Vorzeichen interpretieren.
+Die bestehende `battery_available`-Übergangslogik bleibt massgeblich.
+
+`chart.series` enthält ausschliesslich abgeschlossene 5-Minuten-Buckets mit
+UTC-Start/-Ende, tatsächlichen Mittelwerten für Solar, gesamten Hausverbrauch
+und – falls verfügbar – Batteriefluss sowie Sample-Anzahl. Es werden keine
+SVG-Koordinaten exportiert. `insight` enthält denselben stündlich persistierten
+Fact wie das eInk-Dashboard. `historical_comparison` wird unabhängig davon aus
+der bestehenden History-Logik ermittelt und ist entweder `null` oder trennt Typ,
+Aussage, Bezugszeitraum, Vergleichs- und Basiswert, prozentuale Differenz und
+Richtung (`higher`, `lower`, `similar`). Vergleichstag und Anzahl Basistage
+bleiben, soweit vorhanden, als eigene Felder erhalten. Ist ein historischer Fact
+bereits das aktuelle `insight`, wird für `historical_comparison` der nächste
+inhaltlich unterschiedliche Kandidat verwendet; ohne Alternative ist der Wert
+`null`, statt dieselbe Aussage doppelt zu publizieren.
+
+Der JSON-Takt beträgt standardmässig 15 Sekunden
+(`DASHBOARD_JSON_REFRESH_SECONDS`), passend zum 10-Sekunden-Collector. Der
+unveränderte SVG-Takt bleibt 300 Sekunden. Beide Dateien entstehen im vorhandenen
+Publisher-Service mittels `fsync` und atomarem Replace. Das JSON basiert auf
+einer expliziten Allowlist und enthält insbesondere keine Endpunkte,
+Koordinaten, Zugangsdaten, Gerätekennungen, internen Pfade, Konfigurationswerte
+oder rohen Exceptions. Pfad und Takt können lokal mit
+`DASHBOARD_JSON_OUTPUT_PATH` beziehungsweise
+`DASHBOARD_JSON_REFRESH_SECONDS` gesetzt werden.
+
 Allgemeine Wetterdaten, Temperatur, Niederschlagsmengen, historische
 Sonnenstunden und eine direkte E1002-Upload-API sind nicht Bestandteil.
 Fact-Auswahlen werden dagegen pro lokaler Stunde dauerhaft gespeichert; zusätzlich

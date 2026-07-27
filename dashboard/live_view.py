@@ -16,6 +16,7 @@ from .facts.history import (HISTORICAL_IDS, decode_and_render,
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 MONTHS = ("", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember")
 LOGGER = logging.getLogger(__name__)
+_SNAPSHOT_UNSET = object()
 
 
 def _weighted(rows, field):
@@ -75,9 +76,8 @@ def validate_co2_factor(value):
     return value
 
 
-def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
-                persist_selection=True):
-    """Collect the existing inputs needed by the renderer-independent engine."""
+def build_fact_context(database, now, today_energy_kwh, solar_power_kw, sun=None):
+    """Collect the shared inputs for facts and historical comparisons."""
     now_local = now.astimezone(ZURICH)
     yesterday = database.daily_energy(now_local.date() - timedelta(days=1))
     yesterday_energy = yesterday.energy_today_kwh if yesterday and yesterday.energy_today_kwh >= 0 else None
@@ -93,7 +93,7 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
             anchor_buckets[key] = aggregate.bucket_start
     current_hour = now_local.replace(minute=0, second=0, microsecond=0)
     previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
-    context = FactContext(
+    return FactContext(
         now_local=now_local,
         sunrise=sun.sunrise if sun else None,
         sunset=sun.sunset if sun else None,
@@ -106,6 +106,16 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
         selection_energy_by_hour=anchors,
         selection_bucket_by_hour=anchor_buckets,
     )
+
+
+def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
+                persist_selection=True):
+    """Select the renderer-independent, hourly persisted dashboard story."""
+    context = build_fact_context(database, now, today_energy_kwh, solar_power_kw, sun)
+    now_local = context.now_local
+    current_hour = now_local.replace(minute=0, second=0, microsecond=0)
+    previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
+    anchors = context.selection_energy_by_hour
     initial = build_story_from_context(context)
     morning_history = initial.phase in ("pre_sunrise", "morning_waiting")
     if initial.family in ("status", "technical") and not morning_history:
@@ -190,12 +200,14 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
 def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
                     stale_seconds: float = 180.0, sun_result=None,
                     co2_factor: float = 0.128,
-                    persist_fact_selection: bool = True) -> Dict[str, object]:
+                    persist_fact_selection: bool = True,
+                    snapshot=_SNAPSHOT_UNSET) -> Dict[str, object]:
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
     now_utc = now.astimezone(timezone.utc)
-    snapshot = database.latest_snapshot()
+    if snapshot is _SNAPSHOT_UNSET:
+        snapshot = database.latest_snapshot()
     snapshot_timestamp = _aware_utc(snapshot.timestamp) if snapshot else None
     reference = snapshot_timestamp or now_utc
     candidate_rows = database.latest_aggregates(2)
@@ -255,6 +267,7 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
                                    if power["house_power_kw"] is not None else None),
         "battery_percent": snapshot.battery_soc_pct if snapshot and snapshot.battery_available else None,
         "battery_available": bool(snapshot and snapshot.battery_available),
+        "heat_available": bool(snapshot and snapshot.heat_available),
         "current_time": local_timestamp.strftime("%H:%M Uhr") if local_timestamp else "—",
         "date_text": ("{}, {}. {} {}".format(WEEKDAYS[local_timestamp.weekday()], local_timestamp.day,
                                               MONTHS[local_timestamp.month], local_timestamp.year)

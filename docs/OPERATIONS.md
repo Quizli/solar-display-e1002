@@ -39,10 +39,19 @@ sudo docker compose restart collector dashboard-publisher web
 ./data/solar.db
 ./data/sun-data.json
 ./publish/dashboard.svg
+./publish/dashboard.json
 ```
 
 `data` and `publish` are persistent host bind mounts; rebuilding or replacing a
 container does not remove their contents.
+
+The existing publisher writes JSON every 15 seconds and SVG every 300 seconds by
+default. After deployment, verify both files without exposing configuration:
+
+```bash
+sudo docker compose exec -T dashboard-publisher python3 -m dashboard once
+sudo docker compose exec -T web python3 -c 'import json; json.load(open("/usr/share/nginx/html/dashboard.json"))'
+```
 
 ## Backup
 
