@@ -5,12 +5,14 @@ import math
 import os
 import signal
 import threading
+import time
 from datetime import datetime, timezone
 
 from solar_data.storage import SolarDatabase
 from sun_data import get_sun_data
 from .live_view import build_live_view, validate_co2_factor
 from .publisher import publish_view
+from .web_publisher import build_web_payload, publish_web_payload
 from .health import check_health, format_health_text
 
 
@@ -35,6 +37,8 @@ def parser():
     result = argparse.ArgumentParser(description="Publish the SQLite-backed SVG dashboard")
     result.add_argument("--db-path", default=os.environ.get("SOLAR_DB_PATH", "data/solar.db"))
     result.add_argument("--output", default=os.environ.get("DASHBOARD_OUTPUT_PATH", "publish/dashboard.svg"))
+    result.add_argument("--web-output", default=os.environ.get(
+        "DASHBOARD_JSON_OUTPUT_PATH", "publish/dashboard.json"))
     result.add_argument("--stale-seconds", type=_positive, default=float(os.environ.get("DASHBOARD_STALE_SECONDS", "180")))
     result.add_argument("--sun-cache", default=os.environ.get("SUN_DATA_CACHE_PATH", "data/sun-data.json"))
     commands = result.add_subparsers(dest="command", required=True)
@@ -44,6 +48,8 @@ def parser():
     health.add_argument("--text", action="store_true")
     loop = commands.add_parser("loop")
     loop.add_argument("--interval", type=_positive, default=float(os.environ.get("DASHBOARD_REFRESH_SECONDS", "300")))
+    loop.add_argument("--web-interval", type=_positive, default=float(os.environ.get(
+        "DASHBOARD_JSON_REFRESH_SECONDS", "15")))
     return result
 
 
@@ -83,18 +89,28 @@ def main():
             if args.command == "status":
                 print(json.dumps(make_view(database), indent=2, ensure_ascii=False))
                 return 0
+            next_svg = 0.0
             while True:
                 view = make_view(database)
-                if view["freshness"] != "missing":
+                monotonic_now = time.monotonic()
+                if view["freshness"] != "missing" and monotonic_now >= next_svg:
                     publish_view(view, args.output)
                     logging.info("published dashboard from %s data", view["freshness"])
+                    next_svg = monotonic_now + (args.interval if args.command == "loop" else 0)
                 else:
-                    logging.warning("no solar data; last good dashboard is unchanged")
+                    if view["freshness"] == "missing":
+                        logging.warning("no solar data; last good SVG dashboard is unchanged")
+                try:
+                    publish_web_payload(build_web_payload(database, view), args.web_output)
+                    logging.info("published public dashboard JSON from %s data",
+                                 view["freshness"])
+                except Exception:
+                    logging.exception("public dashboard JSON publishing failed")
                     if args.command == "once":
                         return 1
                 if args.command == "once":
-                    return 0
-                if stop.wait(args.interval):
+                    return 1 if view["freshness"] == "missing" else 0
+                if stop.wait(args.web_interval):
                     return 0
     except Exception:
         logging.exception("dashboard command failed")

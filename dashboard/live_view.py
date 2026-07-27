@@ -255,6 +255,7 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
                                    if power["house_power_kw"] is not None else None),
         "battery_percent": snapshot.battery_soc_pct if snapshot and snapshot.battery_available else None,
         "battery_available": bool(snapshot and snapshot.battery_available),
+        "heat_available": bool(snapshot and snapshot.heat_available),
         "current_time": local_timestamp.strftime("%H:%M Uhr") if local_timestamp else "—",
         "date_text": ("{}, {}. {} {}".format(WEEKDAYS[local_timestamp.weekday()], local_timestamp.day,
                                               MONTHS[local_timestamp.month], local_timestamp.year)
