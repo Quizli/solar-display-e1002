@@ -170,12 +170,25 @@ const context = {window: {}, Intl, Date, Object, Array, Math, Number, String};
 vm.createContext(context);
 vm.runInContext(fs.readFileSync("web/assets/dashboard.js", "utf8"), context);
 const payload = JSON.parse(fs.readFileSync(0, "utf8"));
-process.stdout.write(String(context.window.SolarDashboard.validPayload(payload)));
+const api = context.window.SolarDashboard;
+const view = api.buildViewModel(payload);
+process.stdout.write(JSON.stringify({
+    valid: api.validPayload(payload),
+    weather_state: view && view.states.weather,
+    solar_value: view && view.fields["live.solar_power_kw"],
+    sunshine_hours: view && view.fields["header.sunshine_hours"],
+}));
 '''
         result = subprocess.run(
             ["node", "-e", probe], input=json.dumps(payload), text=True,
             cwd=Path(__file__).parents[1], capture_output=True, check=True)
-        self.assertEqual(result.stdout, "true")
+        client_result = json.loads(result.stdout)
+        self.assertEqual(client_result, {
+            "valid": True,
+            "weather_state": "degraded",
+            "solar_value": "8.0",
+            "sunshine_hours": "—",
+        })
 
     def test_optional_battery_values_are_safe_nulls(self):
         self.snapshot(battery=False, heat=False)
