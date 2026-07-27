@@ -79,14 +79,14 @@ def main():
             return exit_code
         coordinates = _sun_coordinates(os.environ)
 
-        def make_view(database, snapshot=_SNAPSHOT_NOT_SUPPLIED):
+        def make_view(database, now=None, snapshot=_SNAPSHOT_NOT_SUPPLIED):
             sun_result = None
             if coordinates:
                 sun_result = get_sun_data(coordinates[0], coordinates[1], args.sun_cache,
                                           refresh_seconds=refresh, max_age_seconds=max_age)
             options = ({} if snapshot is _SNAPSHOT_NOT_SUPPLIED else
                        {"snapshot": snapshot})
-            return build_live_view(database, stale_seconds=args.stale_seconds,
+            return build_live_view(database, now=now, stale_seconds=args.stale_seconds,
                                    sun_result=sun_result, co2_factor=factor,
                                    **options)
 
@@ -96,8 +96,9 @@ def main():
                 return 0
             next_svg = 0.0
             while True:
+                cycle_now = datetime.now(timezone.utc)
                 snapshot = database.latest_snapshot()
-                view = make_view(database, snapshot)
+                view = make_view(database, cycle_now, snapshot)
                 monotonic_now = time.monotonic()
                 if view["freshness"] != "missing" and monotonic_now >= next_svg:
                     publish_view(view, args.output)
@@ -108,7 +109,8 @@ def main():
                         logging.warning("no solar data; last good SVG dashboard is unchanged")
                 try:
                     publish_web_payload(
-                        build_web_payload(database, view, snapshot), args.web_output)
+                        build_web_payload(database, view, snapshot, cycle_now),
+                        args.web_output)
                     logging.info("published public dashboard JSON from %s data",
                                  view["freshness"])
                 except Exception:

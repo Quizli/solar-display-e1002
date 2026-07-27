@@ -107,7 +107,9 @@ class WebPublisherTest(unittest.TestCase):
 
         # A concurrently collected sample belongs to the next publisher cycle.
         self.snapshot(solar=9.8, house=8, heat_power=2)
-        payload = build_web_payload(self.database, view, cycle_snapshot, self.now)
+        with patch.object(self.database, "latest_snapshot",
+                          side_effect=AssertionError("must not re-read snapshot")):
+            payload = build_web_payload(self.database, view, cycle_snapshot, self.now)
 
         self.assertEqual(payload["status"]["freshness"], "fresh")
         self.assertEqual(datetime.fromisoformat(payload["data"]["timestamp"]),
