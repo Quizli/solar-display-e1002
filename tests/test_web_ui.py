@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HTML = ROOT / "web" / "dashboard.html"
 CSS = ROOT / "web" / "assets" / "dashboard.css"
 ICONS = ROOT / "web" / "assets" / "icons.svg"
+JAVASCRIPT = ROOT / "web" / "assets" / "dashboard.js"
 NGINX = ROOT / "deploy" / "nginx" / "default.conf"
 
 
@@ -45,6 +46,7 @@ class WebDashboardShellTests(unittest.TestCase):
     def test_production_assets_exist_and_html_parses(self):
         self.assertTrue(CSS.is_file())
         self.assertTrue(ICONS.is_file())
+        self.assertTrue(JAVASCRIPT.is_file())
         self.assertIn("<!doctype html>", self.source.lower())
         self.assertIn("</html>", self.source.lower())
 
@@ -69,13 +71,32 @@ class WebDashboardShellTests(unittest.TestCase):
         self.assertTrue(required_fields <= self.parser.fields)
         self.assertIn("local-time", self.parser.ids)
 
-    def test_loading_state_has_no_javascript_or_external_requests(self):
+    def test_local_deferred_javascript_is_the_only_script(self):
         self.assertIn('data-state="loading"', self.source)
         self.assertIn('aria-busy="true"', self.source)
-        self.assertEqual(self.parser.scripts, [])
+        self.assertEqual(self.parser.scripts, [{"src": "assets/dashboard.js", "defer": None}])
         self.assertEqual(self.parser.remote_urls, [])
-        self.assertNotIn("dashboard.json", self.source)
-        self.assertNotRegex(self.source, r"\b(?:fetch|XMLHttpRequest)\s*\(")
+        self.assertTrue(JAVASCRIPT.is_file())
+
+    def test_javascript_contract_polling_and_dom_safety(self):
+        source = JAVASCRIPT.read_text(encoding="utf-8")
+        self.assertIn('const DATA_URL = "dashboard.json"', source)
+        self.assertEqual(source.count('fetcher(DATA_URL'), 1)
+        self.assertIn('const SCHEMA_VERSION = "1.0"', source)
+        self.assertIn('payload.schema_version !== SCHEMA_VERSION', source)
+        self.assertIn('const view = buildViewModel(payload)', source)
+        self.assertIn('const REFRESH_MS = 15000', source)
+        self.assertIn('cache: "no-store"', source)
+        self.assertIn('AbortController', source)
+        self.assertIn('if (running || stopped)', source)
+        self.assertIn('visibilitychange', source)
+        self.assertIn('createController(root).refresh()', source)
+        self.assertNotIn('innerHTML', source)
+        self.assertNotIn('eval(', source)
+        self.assertEqual(source.count("http://"), 1)
+        self.assertIn('const NS = "http://www.w3.org/2000/svg"', source)
+        self.assertNotIn("https://", source)
+
 
     def test_all_prepared_states_and_responsive_rules_are_styled(self):
         css = CSS.read_text(encoding="utf-8")
@@ -91,10 +112,11 @@ class WebDashboardShellTests(unittest.TestCase):
 
     def test_fresh_status_remains_visible_and_degraded_is_component_scoped(self):
         css = CSS.read_text(encoding="utf-8")
-        self.assertNotIn("[data-state=fresh] .status-pill{display:none}", css)
-        self.assertIn("[data-state=fresh] .status-pill{display:flex", css)
-        self.assertIn("[data-component]:not(.dashboard)[data-state=degraded]", css)
+        self.assertNotIn(".status-pill[data-state=fresh]{display:none}", css)
+        self.assertIn(".status-pill[data-state=fresh]{display:flex", css)
+        self.assertIn(".glass[data-state=degraded],.sun-data[data-state=degraded]", css)
         self.assertNotIn(".dashboard[data-state=degraded]", css)
+        self.assertNotIn("footer[data-state=degraded]", css)
 
     def test_loading_segments_are_neutral_and_have_twenty_slots_each(self):
         css = CSS.read_text(encoding="utf-8")

@@ -154,6 +154,42 @@ class WebPublisherTest(unittest.TestCase):
         fresh = build_web_payload(self.database, view, snapshot, self.now)
         self.assertEqual(fresh["status"]["overall"], "fresh")
 
+    def test_invalid_weather_publisher_payload_is_accepted_by_web_client(self):
+        self.snapshot()
+        snapshot = self.database.latest_snapshot()
+        view = build_live_view(self.database, self.now, snapshot=snapshot)
+        view["sun_data_status"] = "invalid"
+        payload = build_web_payload(self.database, view, snapshot, self.now)
+
+        self.assertEqual(payload["status"]["overall"], "degraded")
+        self.assertEqual(payload["status"]["affected_components"], ["weather"])
+        self.assertEqual(payload["status"]["components"]["weather"], "invalid")
+        probe = r'''
+const fs = require("fs"), vm = require("vm");
+const context = {window: {}, Intl, Date, Object, Array, Math, Number, String};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync("web/assets/dashboard.js", "utf8"), context);
+const payload = JSON.parse(fs.readFileSync(0, "utf8"));
+const api = context.window.SolarDashboard;
+const view = api.buildViewModel(payload);
+process.stdout.write(JSON.stringify({
+    valid: api.validPayload(payload),
+    weather_state: view && view.states.weather,
+    solar_value: view && view.fields["live.solar_power_kw"],
+    sunshine_hours: view && view.fields["header.sunshine_hours"],
+}));
+'''
+        result = subprocess.run(
+            ["node", "-e", probe], input=json.dumps(payload), text=True,
+            cwd=Path(__file__).parents[1], capture_output=True, check=True)
+        client_result = json.loads(result.stdout)
+        self.assertEqual(client_result, {
+            "valid": True,
+            "weather_state": "degraded",
+            "solar_value": "8.0",
+            "sunshine_hours": "—",
+        })
+
     def test_optional_battery_values_are_safe_nulls(self):
         self.snapshot(battery=False, heat=False)
         payload, _ = self.payload()
