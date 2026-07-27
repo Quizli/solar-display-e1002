@@ -16,6 +16,7 @@ from .facts.history import (HISTORICAL_IDS, decode_and_render,
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 MONTHS = ("", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember")
 LOGGER = logging.getLogger(__name__)
+_SNAPSHOT_UNSET = object()
 
 
 def _weighted(rows, field):
@@ -199,12 +200,14 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
 def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
                     stale_seconds: float = 180.0, sun_result=None,
                     co2_factor: float = 0.128,
-                    persist_fact_selection: bool = True) -> Dict[str, object]:
+                    persist_fact_selection: bool = True,
+                    snapshot=_SNAPSHOT_UNSET) -> Dict[str, object]:
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
     now_utc = now.astimezone(timezone.utc)
-    snapshot = database.latest_snapshot()
+    if snapshot is _SNAPSHOT_UNSET:
+        snapshot = database.latest_snapshot()
     snapshot_timestamp = _aware_utc(snapshot.timestamp) if snapshot else None
     reference = snapshot_timestamp or now_utc
     candidate_rows = database.latest_aggregates(2)

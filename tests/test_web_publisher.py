@@ -49,8 +49,9 @@ class WebPublisherTest(unittest.TestCase):
         self.database.connection.commit()
 
     def payload(self, **view_kwargs):
-        view = build_live_view(self.database, self.now, **view_kwargs)
-        return build_web_payload(self.database, view, self.now), view
+        snapshot = self.database.latest_snapshot()
+        view = build_live_view(self.database, self.now, snapshot=snapshot, **view_kwargs)
+        return build_web_payload(self.database, view, snapshot, self.now), view
 
     def test_contract_uses_shared_values_flows_and_completed_series(self):
         self.snapshot()
@@ -99,6 +100,33 @@ class WebPublisherTest(unittest.TestCase):
         self.assertEqual(payload["chart"]["series"][0]["solar_power_kw"], 8)
         self.assertEqual(payload["chart"]["series"][0]["house_consumption_kw"], 6)
 
+    def test_one_snapshot_is_used_for_the_entire_publisher_cycle(self):
+        self.snapshot(age=10, solar=1.2, house=2.5, heat_power=.5, battery=False)
+        cycle_snapshot = self.database.latest_snapshot()
+        view = build_live_view(self.database, self.now, snapshot=cycle_snapshot)
+
+        # A concurrently collected sample belongs to the next publisher cycle.
+        self.snapshot(solar=9.8, house=8, heat_power=2)
+        payload = build_web_payload(self.database, view, cycle_snapshot, self.now)
+
+        self.assertEqual(payload["status"]["freshness"], "fresh")
+        self.assertEqual(datetime.fromisoformat(payload["data"]["timestamp"]),
+                         datetime.fromisoformat(cycle_snapshot.timestamp))
+        self.assertEqual(payload["data"]["age_seconds"], 10)
+        self.assertEqual(payload["live"]["solar_power_kw"], 1.2)
+        self.assertEqual(payload["live"]["house_consumption_kw"], 2)
+        self.assertEqual(payload["status"]["components"]["battery"], "missing")
+        self.assertEqual(payload["live"]["battery_flow"]["direction"], "unavailable")
+        self.assertEqual(self.database.latest_snapshot().solar_power_kw, 9.8)
+
+    def test_header_clock_uses_now_even_when_solar_data_is_missing(self):
+        payload, _ = self.payload()
+        expected = self.now.astimezone(ZURICH)
+        self.assertEqual(payload["header"]["local_date"], expected.date().isoformat())
+        self.assertEqual(payload["header"]["local_time"], expected.isoformat())
+        self.assertEqual(payload["status"]["overall"], "missing")
+        self.assertIsNone(payload["data"]["timestamp"])
+
     def test_fresh_degraded_stale_and_missing_statuses(self):
         missing, _ = self.payload()
         self.assertEqual(missing["status"]["overall"], "missing")
@@ -116,9 +144,10 @@ class WebPublisherTest(unittest.TestCase):
         self.assertEqual(degraded["status"]["overall"], "degraded")
         self.assertIn("weather", degraded["status"]["affected_components"])
 
-        view = build_live_view(self.database, self.now)
+        snapshot = self.database.latest_snapshot()
+        view = build_live_view(self.database, self.now, snapshot=snapshot)
         view["sun_data_status"] = "fresh"
-        fresh = build_web_payload(self.database, view, self.now)
+        fresh = build_web_payload(self.database, view, snapshot, self.now)
         self.assertEqual(fresh["status"]["overall"], "fresh")
 
     def test_optional_battery_values_are_safe_nulls(self):

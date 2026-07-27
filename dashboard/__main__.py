@@ -15,6 +15,8 @@ from .publisher import publish_view
 from .web_publisher import build_web_payload, publish_web_payload
 from .health import check_health, format_health_text
 
+_SNAPSHOT_NOT_SUPPLIED = object()
+
 
 def _positive(value):
     parsed = float(value)
@@ -77,13 +79,16 @@ def main():
             return exit_code
         coordinates = _sun_coordinates(os.environ)
 
-        def make_view(database):
+        def make_view(database, snapshot=_SNAPSHOT_NOT_SUPPLIED):
             sun_result = None
             if coordinates:
                 sun_result = get_sun_data(coordinates[0], coordinates[1], args.sun_cache,
                                           refresh_seconds=refresh, max_age_seconds=max_age)
+            options = ({} if snapshot is _SNAPSHOT_NOT_SUPPLIED else
+                       {"snapshot": snapshot})
             return build_live_view(database, stale_seconds=args.stale_seconds,
-                                   sun_result=sun_result, co2_factor=factor)
+                                   sun_result=sun_result, co2_factor=factor,
+                                   **options)
 
         with SolarDatabase(args.db_path) as database:
             if args.command == "status":
@@ -91,7 +96,8 @@ def main():
                 return 0
             next_svg = 0.0
             while True:
-                view = make_view(database)
+                snapshot = database.latest_snapshot()
+                view = make_view(database, snapshot)
                 monotonic_now = time.monotonic()
                 if view["freshness"] != "missing" and monotonic_now >= next_svg:
                     publish_view(view, args.output)
@@ -101,7 +107,8 @@ def main():
                     if view["freshness"] == "missing":
                         logging.warning("no solar data; last good SVG dashboard is unchanged")
                 try:
-                    publish_web_payload(build_web_payload(database, view), args.web_output)
+                    publish_web_payload(
+                        build_web_payload(database, view, snapshot), args.web_output)
                     logging.info("published public dashboard JSON from %s data",
                                  view["freshness"])
                 except Exception:

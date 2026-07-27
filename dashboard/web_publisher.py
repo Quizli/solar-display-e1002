@@ -82,7 +82,7 @@ def _sun_from_view(view, local_day):
         return None
 
 
-def build_web_payload(database, view, now=None):
+def build_web_payload(database, view, snapshot, now=None):
     """Map the shared live view and aggregates to an explicit public allowlist."""
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None or now.utcoffset() is None:
@@ -90,7 +90,6 @@ def build_web_payload(database, view, now=None):
     now_utc = now.astimezone(timezone.utc)
     display = view["display"]
     story = view["story_status"]
-    snapshot = database.latest_snapshot()
     snapshot_time = _aware_utc(snapshot.timestamp) if snapshot else None
     snapshot_text = snapshot_time.isoformat() if snapshot_time else None
     age = max(0.0, (now_utc - snapshot_time).total_seconds()) if snapshot_time else None
@@ -103,7 +102,8 @@ def build_web_payload(database, view, now=None):
                "stale" if freshness == "stale" else
                "degraded" if optional_degraded else "fresh")
 
-    local_day = now_utc.astimezone(ZURICH).date()
+    now_local = now_utc.astimezone(ZURICH)
+    local_day = now_local.date()
     series = []
     for row in database.aggregates_for_local_day(local_day):
         start = _aware_utc(row.bucket_start)
@@ -150,8 +150,7 @@ def build_web_payload(database, view, now=None):
         },
         "header": {
             "local_date": local_day.isoformat(),
-            "local_time": (view.get("power_timestamp") and
-                           _aware_utc(view["power_timestamp"]).astimezone(ZURICH).isoformat()),
+            "local_time": now_local.isoformat(),
             "weather_condition": view.get("weather_icon_variant") if
                                  view.get("sun_data_status") in ("fresh", "cached") else None,
             "sunshine_hours": _number(display.get("sun_hours")),

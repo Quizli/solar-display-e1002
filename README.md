@@ -259,7 +259,9 @@ Komponentenstatus `offline` kennzeichnet dabei eine ausgefallene Solardatenquell
 Optionale nicht verfügbare Werte sind JSON-`null`, Bereiche tragen zusätzlich
 `available` oder `missing`. Nicht endliche Zahlen werden nie publiziert.
 
-`header` enthält lokalen ISO-Zeitpunkt, lokalen Tag, Wetterzustand,
+`header` enthält den aktuellen lokalen ISO-Zeitpunkt und Tag in `Europe/Zurich`
+und bleibt auch bei fehlenden oder veralteten Messdaten verfügbar. Der davon
+getrennte Messzeitpunkt steht unter `data`. Zusätzlich enthält `header` Wetterzustand,
 Sonnenstunden sowie Sonnenauf- und -untergang. `live` und `today` verwenden kW,
 kWh, kg und Prozent. Die Werte unter `live` stammen aus dem neuesten Raw-Snapshot;
 der Hauswert ist wie im eInk-Dashboard der Verbrauch ohne
