@@ -173,6 +173,13 @@ def build_story_from_context(context):
     if special:
         fact_id, lines = special
         return _story(fact_id, "status", lines, phase, period, energy)
+    # Before production starts, catalogue facts based on yesterday's yield would
+    # consume today's rotation before a current-day anchor can exist.  Historical
+    # comparisons are selected separately by live_view and remain available.
+    if phase in ("pre_sunrise", "morning_waiting"):
+        seed = f"{context.now_local.date()}:{context.now_local.hour:02d}:{phase}:0.0"
+        lines = FALLBACKS[_digest(seed) % len(FALLBACKS)]
+        return _story("TECH", "technical", lines, phase, period, energy)
     if energy is not None and energy >= .1:
         local_hour = context.now_local.replace(minute=0, second=0, microsecond=0)
         anchors = dict(context.selection_energy_by_hour)

@@ -276,6 +276,150 @@ class DashboardTest(unittest.TestCase):
         self.assertIn(relaxed.fact_id, {story.fact_id for story in stories} |
                       {fact.fact_id for fact in FACTS if fact.min_kwh <= 50 <= fact.max_kwh})
 
+    def test_preproduction_does_not_persist_catalogue_facts(self):
+        for now in (datetime(2026, 7, 25, 3, 5, tzinfo=timezone.utc),
+                    datetime(2026, 7, 25, 5, 5, tzinfo=timezone.utc)):
+            with self.subTest(now=now):
+                story = build_story(self.db, now, 0, 0)
+                self.assertIn(story.family, {"status", "technical"})
+                self.assertEqual(self.db.fact_selections_for_local_day(
+                    now.astimezone(ZURICH).date()), [])
+
+    def test_previous_day_catalogue_ids_are_deprioritized_but_not_excluded(self):
+        now = datetime(2026, 7, 25, 10, 5, tzinfo=timezone.utc)
+        local_hour = now.astimezone(ZURICH).replace(minute=0)
+        self.aggregate(now.replace(minute=0), 1, 1, 0, 0, 0, 1, energy=50)
+        ordered = build_story(self.db, now, 50, 1, persist_selection=False)
+        yesterday = local_hour - timedelta(days=1)
+        self.db.store_fact_selection("yesterday-first", yesterday, ordered.fact_id,
+                                     ordered.family, 50)
+
+        selected = build_story(self.db, now, 50, 1)
+        self.assertNotEqual(selected.fact_id, ordered.fact_id)
+        self.assertNotEqual(selected.fact_id, "TECH")
+
+        self.db.connection.execute("DELETE FROM fact_history")
+        for fact in FACTS:
+            if fact.min_kwh <= 50 <= fact.max_kwh:
+                self.db.store_fact_selection(f"yesterday-{fact.fact_id}", yesterday,
+                                             fact.fact_id, fact.family, 50)
+        selected_from_exhausted_pool = build_story(self.db, now, 50, 1)
+        self.assertNotEqual(selected_from_exhausted_pool.fact_id, "TECH")
+
+    def test_previous_hour_bridge_waits_for_current_anchor(self):
+        now = datetime(2026, 7, 25, 11, 5, tzinfo=timezone.utc)
+        current_hour = now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
+        previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
+        previous_fact = FACTS[0]
+        self.db.store_fact_selection(hour_key(previous_hour), previous_hour,
+                                     previous_fact.fact_id, previous_fact.family, 5)
+
+        bridged = build_story(self.db, now, 8, 1)
+        self.assertEqual(bridged.fact_id, previous_fact.fact_id)
+        self.assertEqual(bridged.selection_source, "previous_hour_bridge")
+        self.assertIsNone(self.db.get_fact_selection(hour_key(current_hour)))
+
+        self.aggregate(now.replace(minute=0), 1, 1, 0, 0, 0, 1, energy=8)
+        selected = build_story(self.db, now, 8, 1)
+        self.assertEqual(selected.selection_source, "new")
+        self.assertIsNotNone(self.db.get_fact_selection(hour_key(current_hour)))
+
+    def test_previous_hour_bridge_expires_and_handles_dst_fold(self):
+        for now in (datetime(2026, 7, 25, 11, 11, tzinfo=timezone.utc),
+                    datetime(2026, 10, 25, 1, 5, tzinfo=timezone.utc)):
+            with self.subTest(now=now):
+                self.db.connection.execute("DELETE FROM fact_history")
+                current_hour = now.astimezone(ZURICH).replace(minute=0, second=0,
+                                                               microsecond=0)
+                previous_hour = (current_hour.astimezone(timezone.utc) -
+                                 timedelta(hours=1)).astimezone(ZURICH)
+                fact = FACTS[0]
+                self.db.store_fact_selection(hour_key(previous_hour), previous_hour,
+                                             fact.fact_id, fact.family, 5)
+                sun = None
+                if now.month == 10:
+                    sun = type("Sun", (), {
+                        "sunrise": current_hour - timedelta(hours=1),
+                        "sunset": current_hour + timedelta(hours=12),
+                        "weather_code": None,
+                    })()
+                story = build_story(self.db, now, 8, 1, sun=sun)
+                if now.month == 7:
+                    self.assertNotEqual(story.selection_source,
+                                        "previous_hour_bridge")
+                else:
+                    self.assertEqual(previous_hour.hour, current_hour.hour)
+                    self.assertNotEqual(previous_hour.fold, current_hour.fold)
+                    self.assertEqual(story.selection_source,
+                                     "previous_hour_bridge")
+
+    def test_previous_hour_bridge_reuses_historical_yesterday_until_anchor(self):
+        now = datetime(2026, 7, 25, 11, 5, tzinfo=timezone.utc)
+        current_hour = now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
+        previous_hour = (current_hour.astimezone(timezone.utc) -
+                         timedelta(hours=1)).astimezone(ZURICH)
+        payload = json.dumps({
+            "reference_day": "2026-07-24",
+            "period": "yesterday",
+            "comparison_day": "2026-07-23",
+            "comparison_energy_kwh": 42,
+            "baseline_energy_kwh": 35,
+        })
+        self.db.store_fact_selection(
+            hour_key(previous_hour), previous_hour, "HIST_YESTERDAY", "history",
+            42, context_json=payload)
+
+        bridged = build_story(self.db, now, 50, 1)
+        self.assertEqual(bridged.fact_id, "HIST_YESTERDAY")
+        self.assertEqual(bridged.selection_energy_kwh, 42)
+        self.assertEqual(bridged.selection_source, "previous_hour_bridge")
+        self.assertTrue(bridged.selection_persisted)
+        self.assertIsNone(self.db.get_fact_selection(hour_key(current_hour)))
+
+        self.aggregate(now.replace(minute=0), 1, 1, 0, 0, 0, 1, energy=50)
+        selected = build_story(self.db, now, 50, 1)
+        self.assertEqual(selected.selection_source, "new")
+        self.assertNotIn(selected.fact_id, {"HIST_YESTERDAY", "TECH"})
+        self.assertIsNotNone(self.db.get_fact_selection(hour_key(current_hour)))
+
+    def test_previous_hour_bridge_rerenders_historical_record_with_current_yield(self):
+        now = datetime(2026, 7, 25, 11, 5, tzinfo=timezone.utc)
+        current_hour = now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
+        previous_hour = (current_hour.astimezone(timezone.utc) -
+                         timedelta(hours=1)).astimezone(ZURICH)
+        payload = json.dumps({
+            "reference_day": "2026-07-24",
+            "baseline_energy_kwh": 40,
+        })
+        self.db.store_fact_selection(
+            hour_key(previous_hour), previous_hour, "HIST_RECORD", "history",
+            45, context_json=payload)
+
+        first = build_story(self.db, now, 50, 1)
+        updated = build_story(self.db, now + timedelta(minutes=1), 55, 1)
+        self.assertEqual(first.selection_source, "previous_hour_bridge")
+        self.assertEqual(updated.selection_source, "previous_hour_bridge")
+        self.assertIn("50", first.line_1)
+        self.assertIn("55", updated.line_1)
+        self.assertNotEqual(first.line_1, updated.line_1)
+        self.assertIsNone(self.db.get_fact_selection(hour_key(current_hour)))
+
+    def test_previous_hour_bridge_ignores_invalid_historical_context(self):
+        now = datetime(2026, 7, 25, 11, 5, tzinfo=timezone.utc)
+        current_hour = now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
+        previous_hour = (current_hour.astimezone(timezone.utc) -
+                         timedelta(hours=1)).astimezone(ZURICH)
+        for context_json in (None, "not-json"):
+            with self.subTest(context_json=context_json):
+                self.db.connection.execute("DELETE FROM fact_history")
+                self.db.store_fact_selection(
+                    hour_key(previous_hour), previous_hour, "HIST_YESTERDAY",
+                    "history", 42, context_json=context_json)
+                story = build_story(self.db, now, 50, 1)
+                self.assertNotEqual(story.selection_source,
+                                    "previous_hour_bridge")
+                self.assertIsNone(self.db.get_fact_selection(hour_key(current_hour)))
+
     def test_story_waits_before_first_fact_eligible_morning_bucket(self):
         now = datetime(2026, 7, 25, 4, 25, tzinfo=timezone.utc)
         self.snapshot(now, energy_today=.8)
