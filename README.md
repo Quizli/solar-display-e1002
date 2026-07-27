@@ -261,23 +261,26 @@ Optionale nicht verfügbare Werte sind JSON-`null`, Bereiche tragen zusätzlich
 
 `header` enthält lokalen ISO-Zeitpunkt, lokalen Tag, Wetterzustand,
 Sonnenstunden sowie Sonnenauf- und -untergang. `live` und `today` verwenden kW,
-kWh, kg und Prozent. Der Hauswert ist wie im eInk-Dashboard der Verbrauch ohne
+kWh, kg und Prozent. Die Werte unter `live` stammen aus dem neuesten Raw-Snapshot;
+der Hauswert ist wie im eInk-Dashboard der Verbrauch ohne
 den separat ausgewiesenen Ohmpilot-Wert. Batterie- und Netzfluss enthalten sowohl
 den vorzeichenbehafteten Wert (`power_kw`) als auch `magnitude_kw` und eine
 explizite Richtung. Batterie: positiv/`charging`, negativ/`discharging`;
-Netz: positiv/`exporting`, negativ/`importing`; außerdem sind `idle` und
+Netz: positiv/`exporting`, negativ/`importing`; ausserdem sind `idle` und
 `unavailable` möglich. Damit muss ein Frontend keine Vorzeichen interpretieren.
-Die bestehende `battery_available`-Übergangslogik bleibt maßgeblich.
+Die bestehende `battery_available`-Übergangslogik bleibt massgeblich.
 
-`chart.series` enthält ausschließlich abgeschlossene 5-Minuten-Buckets mit
+`chart.series` enthält ausschliesslich abgeschlossene 5-Minuten-Buckets mit
 UTC-Start/-Ende, tatsächlichen Mittelwerten für Solar, gesamten Hausverbrauch
 und – falls verfügbar – Batteriefluss sowie Sample-Anzahl. Es werden keine
 SVG-Koordinaten exportiert. `insight` enthält denselben stündlich persistierten
-Fact wie das eInk-Dashboard. `historical_comparison` ist entweder `null` oder
-trennt Aussage, Referenztag, Werte, prozentuale Differenz und Richtung
-(`higher`, `lower`, `similar`).
+Fact wie das eInk-Dashboard. `historical_comparison` wird unabhängig davon aus
+der bestehenden History-Logik ermittelt und ist entweder `null` oder trennt Typ,
+Aussage, Bezugszeitraum, Vergleichs- und Basiswert, prozentuale Differenz und
+Richtung (`higher`, `lower`, `similar`). Vergleichstag und Anzahl Basistage
+bleiben, soweit vorhanden, als eigene Felder erhalten.
 
-Der JSON-Takt beträgt standardmäßig 15 Sekunden
+Der JSON-Takt beträgt standardmässig 15 Sekunden
 (`DASHBOARD_JSON_REFRESH_SECONDS`), passend zum 10-Sekunden-Collector. Der
 unveränderte SVG-Takt bleibt 300 Sekunden. Beide Dateien entstehen im vorhandenen
 Publisher-Service mittels `fsync` und atomarem Replace. Das JSON basiert auf

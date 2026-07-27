@@ -75,11 +75,19 @@ def eligible_historical_candidates(database, context):
     return result
 
 
+def historical_difference(value, baseline):
+    difference_percent = (value - baseline) / baseline * 100
+    direction = ("similar" if abs(difference_percent) < 5 else
+                 "higher" if difference_percent > 0 else "lower")
+    return difference_percent, direction
+
+
 def _comparison_line(value, baseline, similar, suffix):
-    difference = (value - baseline) / baseline * 100
-    if abs(difference) < 5:
+    difference, direction = historical_difference(value, baseline)
+    if direction == "similar":
         return similar
-    return f"Das sind {round(abs(difference))} % {'mehr' if difference > 0 else 'weniger'} {suffix}."
+    comparison = "mehr" if direction == "higher" else "weniger"
+    return f"Das sind {round(abs(difference))} % {comparison} {suffix}."
 
 
 def render_historical(fact_id, context, payload) -> Optional[Story]:

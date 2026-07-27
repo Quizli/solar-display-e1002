@@ -1,14 +1,18 @@
 """Build and atomically publish the allowlisted public dashboard contract."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 import json
 import math
 import os
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 from solar_data.storage import _aware_utc
 from solar_data.timezones import ZURICH
+from .facts.history import (eligible_historical_candidates, historical_difference,
+                            render_historical)
+from .live_view import build_fact_context
 
 
 SCHEMA_VERSION = "1.0"
@@ -33,26 +37,49 @@ def _flow(value, positive, negative, available=True):
     return {"power_kw": value, "magnitude_kw": abs(value), "direction": direction}
 
 
-def _historical(story):
-    if not story.get("historical_fact"):
+def _historical(database, now, day_yield, solar_power, sun):
+    context = build_fact_context(database, now, day_yield, solar_power, sun)
+    candidates = eligible_historical_candidates(database, context)
+    if not candidates:
         return None
-    value = _number(story.get("energy_kwh"))
-    baseline = _number(story.get("historical_baseline_kwh"))
-    direction = None
-    difference_percent = None
+    candidate = candidates[0]
+    details = candidate.context
+    rendered = render_historical(candidate.fact_id, context, details)
+    if rendered is None:
+        return None
+    value = _number(details.get("comparison_energy_kwh", context.today_energy_kwh))
+    baseline = _number(details.get("baseline_energy_kwh"))
     if value is not None and baseline is not None and baseline > 0:
-        difference_percent = (value - baseline) / baseline * 100
-        direction = ("similar" if abs(difference_percent) < 5 else
-                     "higher" if difference_percent > 0 else "lower")
+        difference_percent, direction = historical_difference(value, baseline)
+    else:
+        difference_percent, direction = None, None
     return {
-        "fact_id": story.get("fact_id"),
-        "statement": None,
-        "reference_day": story.get("historical_reference_day"),
-        "value_kwh": value,
-        "baseline_kwh": baseline,
+        "type": candidate.fact_id,
+        "statement": " ".join((rendered.line_1, rendered.line_2)),
         "direction": direction,
         "difference_percent": difference_percent,
+        "comparison_value_kwh": value,
+        "baseline_kwh": baseline,
+        "reference_period": details.get("period", "today"),
+        "reference_day": details.get("reference_day"),
+        "comparison_day": details.get("comparison_day"),
+        "baseline_days": details.get("baseline_days"),
     }
+
+
+def _sun_from_view(view, local_day):
+    sunrise = view["display"].get("sunrise")
+    sunset = view["display"].get("sunset")
+    if not sunrise or not sunset:
+        return None
+    try:
+        return SimpleNamespace(
+            sunrise=datetime.combine(local_day, time.fromisoformat(sunrise), ZURICH),
+            sunset=datetime.combine(local_day, time.fromisoformat(sunset), ZURICH),
+            weather_code=view.get("weather_code"),
+        )
+    except ValueError:
+        return None
 
 
 def build_web_payload(database, view, now=None):
@@ -63,15 +90,14 @@ def build_web_payload(database, view, now=None):
     now_utc = now.astimezone(timezone.utc)
     display = view["display"]
     story = view["story_status"]
-    snapshot_text = view.get("latest_snapshot_timestamp")
-    snapshot_time = _aware_utc(snapshot_text) if snapshot_text else None
+    snapshot = database.latest_snapshot()
+    snapshot_time = _aware_utc(snapshot.timestamp) if snapshot else None
+    snapshot_text = snapshot_time.isoformat() if snapshot_time else None
     age = max(0.0, (now_utc - snapshot_time).total_seconds()) if snapshot_time else None
 
     optional_degraded = []
     if view.get("sun_data_status") not in ("fresh", "cached"):
         optional_degraded.append("weather")
-    if view.get("power_source") == "raw_snapshot":
-        optional_degraded.append("live_power_aggregation")
     freshness = view["freshness"]
     overall = ("missing" if freshness == "missing" else
                "stale" if freshness == "stale" else
@@ -94,13 +120,17 @@ def build_web_payload(database, view, now=None):
             "sample_count": row.sample_count,
         })
 
-    battery_available = bool(display.get("battery_available"))
-    heat_available = bool(display.get("heat_available"))
+    battery_available = bool(snapshot and snapshot.battery_available)
+    heat_available = bool(snapshot and snapshot.heat_available)
+    historical = _historical(
+        database, now_utc, display.get("day_yield_kwh"),
+        snapshot.solar_power_kw if snapshot else None,
+        _sun_from_view(view, local_day))
     payload = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": now_utc.isoformat(),
         "data": {
-            "timestamp": view.get("power_timestamp"),
+            "timestamp": snapshot_text,
             "latest_sample_at": snapshot_text,
             "age_seconds": age,
         },
@@ -115,8 +145,7 @@ def build_web_payload(database, view, now=None):
                 "heat": "available" if heat_available else "missing",
                 "chart": "available" if series else "missing",
                 "insight": "available" if story.get("fact_id") else "missing",
-                "historical_comparison": ("available" if story.get("historical_fact")
-                                            else "missing"),
+                "historical_comparison": "available" if historical else "missing",
             },
         },
         "header": {
@@ -130,14 +159,19 @@ def build_web_payload(database, view, now=None):
             "sunset": display.get("sunset"),
         },
         "live": {
-            "solar_power_kw": _number(display.get("solar_power_kw")),
-            "house_consumption_kw": _number(display.get("display_house_power_kw")),
-            "heat_power_kw": _number(display.get("heat_power_kw")) if heat_available else None,
-            "battery_state_of_charge_percent": (_number(display.get("battery_percent"))
+            "solar_power_kw": _number(snapshot.solar_power_kw) if snapshot else None,
+            "house_consumption_kw": (_number(max(0.0, snapshot.house_power_kw -
+                                                       max(0.0, snapshot.heat_power_kw)))
+                                     if snapshot else None),
+            "heat_power_kw": (_number(max(0.0, snapshot.heat_power_kw))
+                              if heat_available else None),
+            "battery_state_of_charge_percent": (_number(snapshot.battery_soc_pct)
                                                   if battery_available else None),
-            "battery_flow": _flow(display.get("battery_power_kw"), "charging", "discharging",
+            "battery_flow": _flow(snapshot.battery_power_kw if snapshot else None,
+                                  "charging", "discharging",
                                   battery_available),
-            "grid_flow": _flow(display.get("grid_power_kw"), "exporting", "importing"),
+            "grid_flow": _flow(snapshot.grid_power_kw if snapshot else None,
+                               "exporting", "importing"),
         },
         "today": {
             "yield_kwh": _number(display.get("day_yield_kwh")),
@@ -157,13 +191,8 @@ def build_web_payload(database, view, now=None):
             "selection_hour": story.get("selection_hour"),
             "persisted": bool(story.get("selection_persisted")),
         },
-        "historical_comparison": _historical(story),
+        "historical_comparison": historical,
     }
-    if payload["historical_comparison"] is not None:
-        payload["historical_comparison"]["statement"] = " ".join(
-            part for part in (display.get("story_line_1"), display.get("story_line_2"))
-            if part
-        )
     # Enforce standard JSON here as well as during publication.
     json.dumps(payload, allow_nan=False)
     return payload

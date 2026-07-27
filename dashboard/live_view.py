@@ -75,9 +75,8 @@ def validate_co2_factor(value):
     return value
 
 
-def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
-                persist_selection=True):
-    """Collect the existing inputs needed by the renderer-independent engine."""
+def build_fact_context(database, now, today_energy_kwh, solar_power_kw, sun=None):
+    """Collect the shared inputs for facts and historical comparisons."""
     now_local = now.astimezone(ZURICH)
     yesterday = database.daily_energy(now_local.date() - timedelta(days=1))
     yesterday_energy = yesterday.energy_today_kwh if yesterday and yesterday.energy_today_kwh >= 0 else None
@@ -93,7 +92,7 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
             anchor_buckets[key] = aggregate.bucket_start
     current_hour = now_local.replace(minute=0, second=0, microsecond=0)
     previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
-    context = FactContext(
+    return FactContext(
         now_local=now_local,
         sunrise=sun.sunrise if sun else None,
         sunset=sun.sunset if sun else None,
@@ -106,6 +105,16 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
         selection_energy_by_hour=anchors,
         selection_bucket_by_hour=anchor_buckets,
     )
+
+
+def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
+                persist_selection=True):
+    """Select the renderer-independent, hourly persisted dashboard story."""
+    context = build_fact_context(database, now, today_energy_kwh, solar_power_kw, sun)
+    now_local = context.now_local
+    current_hour = now_local.replace(minute=0, second=0, microsecond=0)
+    previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
+    anchors = context.selection_energy_by_hour
     initial = build_story_from_context(context)
     morning_history = initial.phase in ("pre_sunrise", "morning_waiting")
     if initial.family in ("status", "technical") and not morning_history:

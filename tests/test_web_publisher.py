@@ -1,6 +1,8 @@
 import json
 import os
 import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -8,10 +10,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dashboard.live_view import build_live_view
+from dashboard.facts.catalog import FACTS
+from dashboard.facts.engine import hour_key
 from dashboard.publisher import publish_view
 from dashboard.web_publisher import build_web_payload, publish_web_payload
 from fronius.model import LiveData
 from solar_data.storage import SolarDatabase, _utc_text
+from solar_data.timezones import ZURICH
 
 
 class WebPublisherTest(unittest.TestCase):
@@ -25,12 +30,13 @@ class WebPublisherTest(unittest.TestCase):
         self.database.close()
         self.temporary.cleanup()
 
-    def snapshot(self, age=0, battery=True, heat=True):
+    def snapshot(self, age=0, battery=True, heat=True, solar=8, house=6,
+                 heat_power=2, battery_power=1.5, grid=-0.5, soc=72):
         timestamp = self.now - timedelta(seconds=age)
         self.database.store_snapshot(LiveData(
-            timestamp=timestamp.isoformat(), solar_power_kw=8, house_power_kw=6,
-            heat_power_kw=2 if heat else 0, battery_soc_pct=72,
-            battery_power_kw=1.5 if battery else 0, grid_power_kw=-0.5,
+            timestamp=timestamp.isoformat(), solar_power_kw=solar, house_power_kw=house,
+            heat_power_kw=heat_power if heat else 0, battery_soc_pct=soc,
+            battery_power_kw=battery_power if battery else 0, grid_power_kw=grid,
             energy_today_kwh=12, energy_total_kwh=112,
             battery_available=battery, heat_available=heat))
 
@@ -70,6 +76,29 @@ class WebPublisherTest(unittest.TestCase):
         self.assertIn("historical_comparison", payload)
         json.dumps(payload, allow_nan=False)
 
+    def test_live_values_come_from_snapshot_while_chart_uses_aggregates(self):
+        self.aggregate(0)
+        self.aggregate(5)
+        self.snapshot(solar=3.2, house=4.8, heat_power=1.1,
+                      battery_power=-2.4, grid=1.7, soc=44)
+        payload, view = self.payload()
+
+        # The eInk view remains aggregate-smoothed, but public live values do not.
+        self.assertEqual(view["display"]["solar_power_kw"], 8)
+        self.assertEqual(payload["live"]["solar_power_kw"], 3.2)
+        self.assertAlmostEqual(payload["live"]["house_consumption_kw"], 3.7)
+        self.assertEqual(payload["live"]["heat_power_kw"], 1.1)
+        self.assertEqual(payload["live"]["battery_state_of_charge_percent"], 44)
+        self.assertEqual(payload["live"]["battery_flow"]["power_kw"], -2.4)
+        self.assertEqual(payload["live"]["battery_flow"]["direction"], "discharging")
+        self.assertEqual(payload["live"]["grid_flow"]["direction"], "exporting")
+        self.assertEqual(payload["data"]["timestamp"], payload["data"]["latest_sample_at"])
+        self.assertEqual(payload["data"]["age_seconds"], 0)
+        self.assertNotIn("live_power_aggregation",
+                         payload["status"]["affected_components"])
+        self.assertEqual(payload["chart"]["series"][0]["solar_power_kw"], 8)
+        self.assertEqual(payload["chart"]["series"][0]["house_consumption_kw"], 6)
+
     def test_fresh_degraded_stale_and_missing_statuses(self):
         missing, _ = self.payload()
         self.assertEqual(missing["status"]["overall"], "missing")
@@ -92,33 +121,40 @@ class WebPublisherTest(unittest.TestCase):
         fresh = build_web_payload(self.database, view, self.now)
         self.assertEqual(fresh["status"]["overall"], "fresh")
 
-    def test_optional_battery_and_invalid_number_are_safe_nulls(self):
+    def test_optional_battery_values_are_safe_nulls(self):
         self.snapshot(battery=False, heat=False)
-        payload, view = self.payload()
-        view["display"]["solar_power_kw"] = float("nan")
-        payload = build_web_payload(self.database, view, self.now)
-        self.assertIsNone(payload["live"]["solar_power_kw"])
+        payload, _ = self.payload()
         self.assertIsNone(payload["live"]["heat_power_kw"])
         self.assertEqual(payload["live"]["battery_flow"]["direction"], "unavailable")
         self.assertIsNone(payload["live"]["battery_state_of_charge_percent"])
         json.dumps(payload, allow_nan=False)
 
-    def test_historical_comparison_is_structured_from_shared_story(self):
+    def test_normal_insight_and_independent_historical_comparison_coexist(self):
         self.snapshot()
-        _, view = self.payload()
-        view["story_status"].update({
-            "fact_id": "HIST_RECORD", "historical_fact": True,
-            "energy_kwh": 20, "historical_baseline_kwh": 16,
-            "historical_reference_day": "2026-07-24",
-        })
-        view["display"]["story_line_1"] = "Neuer Rekord."
-        view["display"]["story_line_2"] = "Der alte Wert war 16 kWh."
-        comparison = build_web_payload(self.database, view, self.now)[
-            "historical_comparison"]
+        self.aggregate(5)
+        local_hour = self.now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
+        fact = next(item for item in FACTS if item.min_kwh <= 12 <= item.max_kwh)
+        self.database.store_fact_selection(hour_key(local_hour), local_hour,
+                                           fact.fact_id, fact.family, 12)
+        for day, energy in ((23, 8), (24, 10)):
+            timestamp = datetime(2026, 7, day, 18, tzinfo=timezone.utc)
+            self.database.connection.execute(
+                "INSERT INTO aggregates_5m VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (_utc_text(timestamp), 1, 1, 0, 0, 0, 0, energy, 1, 0, 0))
+        self.database.connection.commit()
+
+        payload, _ = self.payload()
+        comparison = payload["historical_comparison"]
+        self.assertEqual(payload["insight"]["fact_id"], fact.fact_id)
+        self.assertNotEqual(payload["insight"]["fact_id"], comparison["type"])
         self.assertEqual(comparison["direction"], "higher")
-        self.assertEqual(comparison["difference_percent"], 25)
+        self.assertEqual(comparison["difference_percent"], 20)
+        self.assertEqual(comparison["comparison_value_kwh"], 12)
+        self.assertEqual(comparison["baseline_kwh"], 10)
         self.assertEqual(comparison["reference_day"], "2026-07-24")
-        self.assertIn("Neuer Rekord", comparison["statement"])
+        self.assertEqual(comparison["reference_period"], "today")
+        self.assertNotEqual(comparison["statement"], " ".join(
+            (payload["insight"]["line_1"], payload["insight"]["line_2"])))
 
     def test_atomic_write_permissions_privacy_and_svg_regression(self):
         self.snapshot()
@@ -143,6 +179,20 @@ class WebPublisherTest(unittest.TestCase):
         svg = self.directory / "dashboard.svg"
         publish_view(view, svg)
         self.assertIn("<svg", svg.read_text(encoding="utf-8"))
+
+    def test_dashboard_once_creates_svg_and_json(self):
+        self.snapshot()
+        svg = self.directory / "once.svg"
+        web = self.directory / "once.json"
+        result = subprocess.run([
+            sys.executable, "-m", "dashboard", "--db-path",
+            str(self.directory / "solar.db"), "--output", str(svg),
+            "--web-output", str(web), "once",
+        ], cwd=Path(__file__).parents[1], capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("<svg", svg.read_text(encoding="utf-8"))
+        self.assertEqual(json.loads(web.read_text(encoding="utf-8"))["schema_version"],
+                         "1.0")
 
 
 if __name__ == "__main__":
