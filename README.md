@@ -274,7 +274,8 @@ Die bestehende `battery_available`-Übergangslogik bleibt massgeblich.
 
 `chart.series` enthält ausschliesslich abgeschlossene 5-Minuten-Buckets mit
 UTC-Start/-Ende, tatsächlichen Mittelwerten für Solar, gesamten Hausverbrauch
-und – falls verfügbar – Batteriefluss sowie Sample-Anzahl. Es werden keine
+und Batteriefluss, dem letzten Batteriestand des Buckets sowie Sample-Anzahl.
+Nicht verfügbare Batteriestände werden als `null` publiziert. Es werden keine
 SVG-Koordinaten exportiert. `insight` enthält denselben stündlich persistierten
 Fact wie das eInk-Dashboard. `historical_comparison` wird unabhängig davon aus
 der bestehenden History-Logik ermittelt und ist entweder `null` oder trennt Typ,
@@ -336,14 +337,16 @@ Die 20 Solarsegmente verwenden die zentrale UI-Anlagenkonstante **21.78 kWp**,
 die Batteriesegmente den Bereich 0–100 Prozent.
 
 Der responsive Tagesverlauf wird direkt als lokales SVG erzeugt: Solar gelb mit
-Fläche, Hausverbrauch blau und Batteriefluss grün um eine sichtbare Nulllinie.
-Die Achse reicht fest von 00:00 bis 24:00; Datenlücken und `null`-Werte werden
-nicht interpoliert. Eine proportionale ViewBox hält Achsentexte auch auf mobilen
-Viewports unverzerrt; der linke Plotrand wird aus der längsten Y-Achsenbeschriftung
-berechnet, damit weder führende Ziffern noch Minuszeichen abgeschnitten werden. Es gibt keine Frameworks, externen Schriftdateien,
+Fläche, Hausverbrauch blau und Batteriestand grün. Solar und Haus verwenden die
+dynamische linke kW-Achse, der Batteriestand die feste rechte Achse von 0 bis
+100 Prozent. Die Zeitachse reicht von 00:00 bis 24:00; Datenlücken und
+`null`-Werte werden nicht interpoliert. Eine proportionale ViewBox hält
+Achsentexte auch auf mobilen Viewports unverzerrt; beide Plotränder werden aus
+den Achsenbeschriftungen berechnet, damit kein Wert abgeschnitten wird. Es gibt keine Frameworks, externen Schriftdateien,
 Chartbibliotheken, CDNs, Tracker oder sonstigen Drittkomponenten zur Laufzeit.
 
-Das Layout ist mobile-first. Ab 700 px stehen Hero-Karten, Energieflüsse sowie
+Das Layout ist mobile-first. Die Energieflüsse bleiben als eine Kachel mit
+vier Segmenten im 2×2-Raster gruppiert. Ab 700 px stehen Hero-Karten sowie
 Tagesverlauf und Insight nebeneinander. Ab 1050 px wird der Tagesverlauf zur
 grossen Desktop-Hauptfläche, während Bilanz und Insight den Seitenbereich
 bilden. Safe-Area-Inset, ein 320-px-Fallback und eine undurchsichtige

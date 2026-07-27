@@ -75,6 +75,8 @@ class WebPublisherTest(unittest.TestCase):
         self.assertEqual(payload["live"]["grid_flow"]["magnitude_kw"], .5)
         self.assertEqual(len(payload["chart"]["series"]), 2)
         self.assertEqual(payload["chart"]["series"][0]["sample_count"], 4)
+        self.assertEqual(
+            payload["chart"]["series"][0]["battery_state_of_charge_percent"], 72)
         self.assertIn("fact_id", payload["insight"])
         self.assertIn("historical_comparison", payload)
         json.dumps(payload, allow_nan=False)
@@ -101,6 +103,8 @@ class WebPublisherTest(unittest.TestCase):
                          payload["status"]["affected_components"])
         self.assertEqual(payload["chart"]["series"][0]["solar_power_kw"], 8)
         self.assertEqual(payload["chart"]["series"][0]["house_consumption_kw"], 6)
+        self.assertEqual(
+            payload["chart"]["series"][0]["battery_state_of_charge_percent"], 72)
 
     def test_one_snapshot_is_used_for_the_entire_publisher_cycle(self):
         self.snapshot(age=10, solar=1.2, house=2.5, heat_power=.5, battery=False)
@@ -192,10 +196,13 @@ process.stdout.write(JSON.stringify({
 
     def test_optional_battery_values_are_safe_nulls(self):
         self.snapshot(battery=False, heat=False)
+        self.aggregate(5, battery=False)
         payload, _ = self.payload()
         self.assertIsNone(payload["live"]["heat_power_kw"])
         self.assertEqual(payload["live"]["battery_flow"]["direction"], "unavailable")
         self.assertIsNone(payload["live"]["battery_state_of_charge_percent"])
+        self.assertIsNone(
+            payload["chart"]["series"][0]["battery_state_of_charge_percent"])
         json.dumps(payload, allow_nan=False)
 
     def test_normal_insight_and_independent_historical_comparison_coexist(self):

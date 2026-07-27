@@ -12,7 +12,6 @@
   <main class="dashboard" data-component="dashboard" data-state="loading" aria-busy="true">
     <header class="glass header" data-component="header">
       <div><p class="eyebrow" data-field="header.local_date">DATUM WIRD GELADEN</p><time class="clock placeholder" data-field="header.local_time" id="local-time">—:—</time></div>
-      <p class="status-pill" data-component="data-status" data-state="loading" role="status" aria-live="polite"><span class="status-dot"></span>Daten werden geladen</p>
       <div class="sun-data" data-component="weather" data-state="loading" aria-label="Sonneninformationen">
         <span><svg aria-hidden="true"><use href="assets/icons.svg#sun"></use></svg><span data-field="header.sunshine_hours">—</span> h Sonne</span>
         <span><svg aria-hidden="true"><use href="assets/icons.svg#sunrise"></use></svg><span data-field="header.sunrise">—</span></span>
@@ -33,13 +32,13 @@
       </article>
     </section>
 
-    <section data-component="energy-flows" aria-labelledby="flows-title">
-      <h2 class="section-title" id="flows-title">ENERGIEFLÜSSE JETZT</h2>
+    <section class="glass flows" data-component="energy-flows" aria-labelledby="flows-title">
+      <h2 class="section-title" id="flows-title">ENERGIEFLÜSSE</h2>
       <div class="flow-grid">
-        <article class="glass flow flow-house" data-component="house-consumption" data-state="loading"><h3><i></i>Hausverbrauch</h3><p class="value placeholder"><span data-field="live.house_consumption_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg></p></article>
-        <article class="glass flow flow-heat" data-component="heat" data-state="loading"><h3><i></i>Warmwasser / Heizung</h3><p class="value placeholder"><span data-field="live.heat_power_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg></p></article>
-        <article class="glass flow flow-battery" data-component="battery-flow" data-state="loading" data-direction="unavailable"><h3><i></i><span data-field="live.battery_flow.direction">Batteriefluss</span></h3><p class="value placeholder"><span data-field="live.battery_flow.magnitude_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg><svg class="direction direction-up" aria-hidden="true"><use href="assets/icons.svg#arrow-up"></use></svg></p></article>
-        <article class="glass flow flow-grid-power" data-component="grid-flow" data-state="loading" data-direction="unavailable"><h3><i></i><span data-field="live.grid_flow.direction">Netzfluss</span></h3><p class="value placeholder"><span data-field="live.grid_flow.magnitude_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg><svg class="direction direction-up" aria-hidden="true"><use href="assets/icons.svg#arrow-up"></use></svg></p></article>
+        <article class="flow flow-house" data-component="house-consumption" data-state="loading"><h3><i></i>Hausverbrauch</h3><p class="value placeholder"><span data-field="live.house_consumption_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg></p></article>
+        <article class="flow flow-heat" data-component="heat" data-state="loading"><h3><i></i>Warmwasser / Heizung</h3><p class="value placeholder"><span data-field="live.heat_power_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg></p></article>
+        <article class="flow flow-battery" data-component="battery-flow" data-state="loading" data-direction="unavailable"><h3><i></i><span data-field="live.battery_flow.direction">Batteriefluss</span></h3><p class="value placeholder"><span data-field="live.battery_flow.magnitude_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg><svg class="direction direction-up" aria-hidden="true"><use href="assets/icons.svg#arrow-up"></use></svg></p></article>
+        <article class="flow flow-grid-power" data-component="grid-flow" data-state="loading" data-direction="unavailable"><h3><i></i><span data-field="live.grid_flow.direction">Netzfluss</span></h3><p class="value placeholder"><span data-field="live.grid_flow.magnitude_kw">—</span><small>kW</small><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#arrow-down"></use></svg><svg class="direction direction-up" aria-hidden="true"><use href="assets/icons.svg#arrow-up"></use></svg></p></article>
       </div>
     </section>
 
@@ -51,7 +50,7 @@
 
       <section class="glass chart" data-component="chart" data-state="loading" aria-labelledby="chart-title">
         <h2 class="section-title" id="chart-title">TAGESVERLAUF</h2><p class="subtitle">Produktion und Verbrauch</p>
-        <ul class="legend" aria-label="Legende"><li class="solar-key">Solar</li><li class="house-key">Haus</li><li class="battery-key">Batterie</li></ul>
+        <ul class="legend" aria-label="Legende"><li class="solar-key">Solar (kW)</li><li class="house-key">Haus (kW)</li><li class="battery-key">Batterie (%)</li></ul>
         <div class="chart-placeholder" data-field="chart.series" role="img" aria-label="Tagesverlauf wird geladen"><span>Daten werden geladen</span></div>
       </section>
 
@@ -66,7 +65,7 @@
       <h2 class="section-title" id="comparison-title">HISTORISCHER VERGLEICH</h2>
       <p class="placeholder"><svg class="direction direction-up" aria-hidden="true"><use href="assets/icons.svg#trend-up"></use></svg><svg class="direction direction-down" aria-hidden="true"><use href="assets/icons.svg#trend-down"></use></svg><svg class="direction direction-similar" aria-hidden="true"><use href="assets/icons.svg#move-right"></use></svg><span data-field="historical_comparison.statement">—</span></p>
     </section>
-    <footer data-component="system-status" data-state="loading" role="status" aria-live="polite"><span class="status-dot"></span><span data-field="data.timestamp">Systemstatus wird geladen</span></footer>
+    <footer data-component="system-status" data-state="loading"><p class="status-pill" data-component="data-status" data-state="loading" role="status" aria-live="polite"><span class="status-dot"></span><span data-field="data.timestamp">Daten werden geladen</span></p></footer>
   </main>
 </body>
 </html>

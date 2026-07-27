@@ -139,6 +139,39 @@ class WebDashboardShellTests(unittest.TestCase):
             self.assertIn("data-direction=" + direction, css)
         self.assertIn('data-direction="unavailable"', self.source)
         self.assertNotRegex(self.source + css, r"power_kw\s*[<>]=?\s*0")
+        self.assertIn(
+            ".flow-house .direction,.flow-heat .direction{color:var(--flow-in)}",
+            css)
+        self.assertIn(
+            ".flow-battery[data-direction=charging] .direction-down"
+            "{display:inline;color:var(--flow-in)}", css)
+        self.assertIn(
+            ".flow-battery[data-direction=discharging] .direction-up"
+            "{display:inline;color:var(--flow-out)}", css)
+        self.assertIn(
+            ".flow-grid-power[data-direction=exporting] .direction-down"
+            "{display:inline;color:var(--flow-out)}", css)
+        self.assertIn(
+            ".flow-grid-power[data-direction=importing] .direction-up"
+            "{display:inline;color:var(--flow-in)}", css)
+
+    def test_flows_are_one_segmented_card_and_status_pill_is_in_footer(self):
+        flows = re.search(
+            r'<section class="glass flows"[^>]+data-component="energy-flows".*?'
+            r'</section>', self.source, re.DOTALL)
+        self.assertIsNotNone(flows)
+        self.assertEqual(flows.group(0).count('class="flow '), 4)
+        self.assertNotIn('class="glass flow ', flows.group(0))
+        footer = re.search(r'<footer[^>]*>.*?</footer>', self.source, re.DOTALL)
+        self.assertIsNotNone(footer)
+        self.assertIn('data-component="data-status"', footer.group(0))
+        header = re.search(r'<header[^>]*>.*?</header>', self.source, re.DOTALL)
+        self.assertNotIn('data-component="data-status"', header.group(0))
+
+    def test_chart_legend_declares_power_and_battery_units(self):
+        self.assertIn('<li class="solar-key">Solar (kW)</li>', self.source)
+        self.assertIn('<li class="house-key">Haus (kW)</li>', self.source)
+        self.assertIn('<li class="battery-key">Batterie (%)</li>', self.source)
 
     def test_insight_contract_fields_have_distinct_elements(self):
         insight = re.search(
