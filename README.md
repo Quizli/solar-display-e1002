@@ -323,17 +323,22 @@ Die semantischen Komponenten werden über `data-component`, Vertragsfelder über
 `data-field` und gerichtete Energieflüsse ausschliesslich über die publizierten
 `direction`-Felder gebunden. `data-state` unterstützt `loading`, `fresh`,
 `degraded`, `stale`, `missing` und `offline`. Komponentenfehler bleiben lokal;
-bei einem Abruf-, HTTP-, JSON- oder Schemafehler bleiben nach dem ersten Erfolg
-die letzten vollständig validierten Werte sichtbar. Eine erfolgreiche Antwort
-stellt den aktuellen Zustand automatisch wieder her. Zahlen und Zeiten werden
-in Schweizer Darstellung beziehungsweise stets in `Europe/Zurich` formatiert.
+Payloads werden vor der Darstellung vollständig validiert und erst als fertiges
+View-Model atomar ins DOM übernommen. Strukturell oder typmässig ungültige
+Payloads werden ohne sichtbare Teilaktualisierung verworfen. Bei Netzwerk-,
+HTTP- oder JSON-Fehlern bleiben nach dem ersten Erfolg die letzten vollständig
+validierten Werte sichtbar; der Offline-Stand verwendet `generated_at`. Eine
+erfolgreiche Antwort stellt den aktuellen Zustand automatisch wieder her. Fresh
+zeigt das gerundete `data.age_seconds`. Zahlen und Zeiten werden in Schweizer
+Darstellung beziehungsweise stets in `Europe/Zurich` formatiert.
 Die 20 Solarsegmente verwenden die zentrale UI-Anlagenkonstante **21.78 kWp**,
 die Batteriesegmente den Bereich 0–100 Prozent.
 
 Der responsive Tagesverlauf wird direkt als lokales SVG erzeugt: Solar gelb mit
 Fläche, Hausverbrauch blau und Batteriefluss grün um eine sichtbare Nulllinie.
 Die Achse reicht fest von 00:00 bis 24:00; Datenlücken und `null`-Werte werden
-nicht interpoliert. Es gibt keine Frameworks, externen Schriftdateien,
+nicht interpoliert. Eine proportionale ViewBox hält Achsentexte auch auf mobilen
+Viewports unverzerrt. Es gibt keine Frameworks, externen Schriftdateien,
 Chartbibliotheken, CDNs, Tracker oder sonstigen Drittkomponenten zur Laufzeit.
 
 Das Layout ist mobile-first. Ab 700 px stehen Hero-Karten, Energieflüsse sowie

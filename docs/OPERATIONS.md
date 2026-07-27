@@ -47,9 +47,9 @@ container does not remove their contents.
 
 The existing publisher writes JSON every 15 seconds and SVG every 300 seconds by
 default. The browser code in `web/assets/dashboard.js` independently requests
-only `/dashboard.json` immediately and every 15 seconds. It retains the last
-valid payload while offline and renders its responsive SVG chart without a
-third-party library. Solar activity segments are scaled against the documented
+only `/dashboard.json` immediately and every 15 seconds. It validates a complete payload before an atomic DOM update, retains the last
+valid payload while offline, shows its `generated_at` dashboard time, and
+renders its responsive SVG chart without a third-party library. Solar activity segments are scaled against the documented
 21.78 kWp installation capacity.
 
 After merging, pull `main` and recreate the `web` container with the deployment
