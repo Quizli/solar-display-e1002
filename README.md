@@ -312,13 +312,29 @@ verschachtelte Bind-Mounts und funktionieren damit auch mit der
 Synology-Docker-Runtime. Eine zweite Webanwendung oder ein zusätzlicher Service
 ist nicht nötig.
 
-Die semantischen Komponenten sind mit `data-component`, Vertragsfelder mit
-`data-field` und gerichtete Energieflüsse mit `data-direction` vorbereitet.
-`data-state` unterstützt `loading`, `fresh`, `degraded`, `stale`, `missing` und
-`offline`. Die Produktionsseite startet ausschliesslich im ruhigen
-Loading-Zustand. Sie enthält weder Beispielwerte noch JavaScript, Datenabruf,
-automatische Aktualisierung oder Chartbibliothek; diese Datenbindung folgt in
-einem separaten PR.
+Die produktive Datenbindung liegt ohne Build-Schritt in
+`web/assets/dashboard.js` und wird lokal mit `defer` geladen. Sie liest als
+einzige Datenquelle die relative Datei `dashboard.json` mit `cache: no-store`,
+prüft Schema-Version **1.0**, ruft sofort und danach alle 15 Sekunden ab und
+verhindert überlappende Abrufe. Ein Abruf wird nach 10 Sekunden abgebrochen;
+beim erneuten Sichtbarwerden des Tabs erfolgt ein sofortiger Folgeabruf.
+
+Die semantischen Komponenten werden über `data-component`, Vertragsfelder über
+`data-field` und gerichtete Energieflüsse ausschliesslich über die publizierten
+`direction`-Felder gebunden. `data-state` unterstützt `loading`, `fresh`,
+`degraded`, `stale`, `missing` und `offline`. Komponentenfehler bleiben lokal;
+bei einem Abruf-, HTTP-, JSON- oder Schemafehler bleiben nach dem ersten Erfolg
+die letzten vollständig validierten Werte sichtbar. Eine erfolgreiche Antwort
+stellt den aktuellen Zustand automatisch wieder her. Zahlen und Zeiten werden
+in Schweizer Darstellung beziehungsweise stets in `Europe/Zurich` formatiert.
+Die 20 Solarsegmente verwenden die zentrale UI-Anlagenkonstante **21.78 kWp**,
+die Batteriesegmente den Bereich 0–100 Prozent.
+
+Der responsive Tagesverlauf wird direkt als lokales SVG erzeugt: Solar gelb mit
+Fläche, Hausverbrauch blau und Batteriefluss grün um eine sichtbare Nulllinie.
+Die Achse reicht fest von 00:00 bis 24:00; Datenlücken und `null`-Werte werden
+nicht interpoliert. Es gibt keine Frameworks, externen Schriftdateien,
+Chartbibliotheken, CDNs, Tracker oder sonstigen Drittkomponenten zur Laufzeit.
 
 Das Layout ist mobile-first. Ab 700 px stehen Hero-Karten, Energieflüsse sowie
 Tagesverlauf und Insight nebeneinander. Ab 1050 px wird der Tagesverlauf zur

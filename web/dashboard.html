@@ -6,13 +6,14 @@
   <meta name="color-scheme" content="light">
   <title>Solar-Dashboard</title>
   <link rel="stylesheet" href="assets/dashboard.css">
+  <script src="assets/dashboard.js" defer></script>
 </head>
 <body>
   <main class="dashboard" data-component="dashboard" data-state="loading" aria-busy="true">
     <header class="glass header" data-component="header">
       <div><p class="eyebrow" data-field="header.local_date">DATUM WIRD GELADEN</p><time class="clock placeholder" data-field="header.local_time" id="local-time">—:—</time></div>
       <p class="status-pill" data-component="data-status" data-state="loading" role="status" aria-live="polite"><span class="status-dot"></span>Daten werden geladen</p>
-      <div class="sun-data" aria-label="Sonneninformationen">
+      <div class="sun-data" data-component="weather" data-state="loading" aria-label="Sonneninformationen">
         <span><svg aria-hidden="true"><use href="assets/icons.svg#sun"></use></svg><span data-field="header.sunshine_hours">—</span> h Sonne</span>
         <span><svg aria-hidden="true"><use href="assets/icons.svg#sunrise"></use></svg><span data-field="header.sunrise">—</span></span>
         <span><svg aria-hidden="true"><use href="assets/icons.svg#sunset"></use></svg><span data-field="header.sunset">—</span></span>
