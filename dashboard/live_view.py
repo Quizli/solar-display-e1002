@@ -118,7 +118,7 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
     anchors = context.selection_energy_by_hour
     initial = build_story_from_context(context)
     morning_history = initial.phase in ("pre_sunrise", "morning_waiting")
-    if initial.family in ("status", "technical") and not morning_history:
+    if initial.family == "status" and not morning_history:
         return initial
     if not persist_selection:
         return initial
@@ -147,6 +147,24 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
             LOGGER.warning("persisted historical fact %s has invalid context",
                            stored.fact_id)
             return initial
+
+    # A completed bucket for the new hour arrives a few minutes after the hour.
+    # Keep showing the immediately preceding real (UTC) hour in that short gap;
+    # using UTC here distinguishes both folds of the autumn clock change.
+    current_anchor = anchors.get(key)
+    bridge_age = now.astimezone(timezone.utc) - current_hour.astimezone(timezone.utc)
+    if (initial.phase == "active_production" and current_anchor is None and
+            timedelta(0) <= bridge_age <= timedelta(minutes=10)):
+        bridge_record = database.get_fact_selection(hour_key(previous_hour))
+        bridge_fact = FACTS_BY_ID.get(bridge_record.fact_id) if bridge_record else None
+        if bridge_fact:
+            bridged = story_for_catalog_fact(
+                context, bridge_fact, bridge_record.selection_energy_kwh,
+                bridge_record.selection_energy_kwh,
+                bridge_record.selection_bucket_start, persisted=True,
+                source="previous_hour_bridge")
+            if bridged:
+                return bridged
 
     used_history = any(item.fact_id in HISTORICAL_IDS for item in
                        database.fact_selections_for_local_day(now_local.date()))
@@ -178,13 +196,28 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
     if not candidates:
         return initial
     used_today = {item.fact_id for item in
-                  database.fact_selections_for_local_day(now_local.date())}
-    preferred = [(fact, rendered) for fact, rendered in candidates
-                 if fact.fact_id not in used_today and
-                 (previous is None or fact.family != previous.family)]
-    unused = [(fact, rendered) for fact, rendered in candidates
-              if fact.fact_id not in used_today]
-    fact = (preferred or unused or candidates)[0][0]
+                  database.fact_selections_for_local_day(now_local.date())
+                  if item.fact_id in FACTS_BY_ID}
+    used_yesterday = {item.fact_id for item in
+                      database.fact_selections_for_local_day(
+                          now_local.date() - timedelta(days=1))
+                      if item.fact_id in FACTS_BY_ID}
+    unused_both_other_family = [item for item in candidates
+                                if item[0].fact_id not in used_today
+                                and item[0].fact_id not in used_yesterday
+                                and (previous is None or
+                                     item[0].family != previous.family)]
+    unused_both = [item for item in candidates
+                   if item[0].fact_id not in used_today
+                   and item[0].fact_id not in used_yesterday]
+    unused_today_other_family = [item for item in candidates
+                                 if item[0].fact_id not in used_today
+                                 and (previous is None or
+                                      item[0].family != previous.family)]
+    unused_today = [item for item in candidates
+                    if item[0].fact_id not in used_today]
+    fact = (unused_both_other_family or unused_both or
+            unused_today_other_family or unused_today or candidates)[0][0]
     record = database.store_fact_selection(
         key, current_hour, fact.fact_id, fact.family, selection_energy,
         initial.selection_bucket_start)
