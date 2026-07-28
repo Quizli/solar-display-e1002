@@ -63,9 +63,9 @@ class WebDashboardJavaScriptTests(unittest.TestCase):
         pure = JS_BOOT + f"const good={payload};" + r'''
 const weather=clone(good);weather.status.overall="degraded";weather.status.affected_components=["weather"];weather.status.components.weather="invalid";weather.header.weather_condition=null;weather.header.sunshine_hours=null;weather.header.sunrise=null;weather.header.sunset=null;
 const invalid=[];let p;p=clone(good);delete p.live.grid_flow;invalid.push(p);p=clone(good);p.data.age_seconds="8";invalid.push(p);p=clone(good);p.schema_version="2.0";invalid.push(p);p=clone(good);p.live.battery_flow.direction="full";invalid.push(p);p=clone(good);p.chart.series[0].start_at="bad";invalid.push(p);p=clone(good);p.chart.series[0].battery_state_of_charge_percent=101;invalid.push(p);
-const model=api.chartModel(good.chart.series),x=v=>v,y=v=>v,weatherView=api.buildViewModel(weather);
+const model=api.chartModel(good.chart.series),x=v=>v,y=v=>v,weatherView=api.buildViewModel(weather),withoutComparison=clone(good);withoutComparison.historical_comparison=null;withoutComparison.status.components.historical_comparison="missing";const emptyComparisonView=api.buildViewModel(withoutComparison);
 const clippingModel={top:20,bottom:-5},axisLayouts=[280,350,780,1200].map(width=>api.chartLayout({clientWidth:width,clientHeight:125},clippingModel));
-process.stdout.write(JSON.stringify({axisLayouts,formats:[api.formatTime(null),api.formatDate(null),api.formatTime(undefined),api.formatDate(""),api.formatTime(false),api.formatDate("bad")],invalid:invalid.map(api.validPayload),weatherValid:api.validPayload(weather),weather:weatherView,chart:{bottom:model.bottom,solar:api.pathSequences(model,"solar",x,y).length,house:api.pathSequences(model,"house",x,y).length,battery:api.pathSequences(model,"battery",x,y).length,batteryValues:model.points.map(point=>point.battery)},geometry320:api.chartGeometry({clientWidth:280,clientHeight:125}),geometry390:api.chartGeometry({clientWidth:350,clientHeight:125}),timeTicksMobile:api.chartTimeTicks(256),timeTicksWide:api.chartTimeTicks(326)}));'''
+process.stdout.write(JSON.stringify({emptyComparisonView,axisLayouts,formats:[api.formatTime(null),api.formatDate(null),api.formatTime(undefined),api.formatDate(""),api.formatTime(false),api.formatDate("bad")],invalid:invalid.map(api.validPayload),weatherValid:api.validPayload(weather),weather:weatherView,chart:{bottom:model.bottom,solar:api.pathSequences(model,"solar",x,y).length,house:api.pathSequences(model,"house",x,y).length,battery:api.pathSequences(model,"battery",x,y).length,batteryValues:model.points.map(point=>point.battery)},geometry320:api.chartGeometry({clientWidth:280,clientHeight:125}),geometry390:api.chartGeometry({clientWidth:350,clientHeight:125}),timeTicksMobile:api.chartTimeTicks(256),timeTicksWide:api.chartTimeTicks(326)}));'''
         cls.result = run_js(pure)
 
         controller = JS_BOOT + DOM_HELPER + f"const good={payload};" + r'''
@@ -88,6 +88,13 @@ process.stdout.write(JSON.stringify({axisLayouts,formats:[api.formatTime(null),a
         for component in ("solar", "house-consumption", "grid-flow", "today", "battery", "battery-flow", "heat", "chart", "insight", "historical-comparison"):
             self.assertNotEqual(weather["states"][component], "degraded")
         self.assertEqual(weather["fields"]["header.sunrise"], "—")
+
+    def test_missing_historical_comparison_renders_explanatory_empty_state(self):
+        view = self.result["emptyComparisonView"]
+        self.assertEqual(view["fields"]["historical_comparison.statement"],
+                         "Noch keine Vergleichsdaten verfügbar")
+        self.assertEqual(view["states"]["historical-comparison"], "missing")
+        self.assertEqual(view["directions"]["comparison"], "unavailable")
 
     def test_incomplete_wrong_schema_and_wrong_types_are_rejected(self):
         self.assertEqual(self.result["invalid"], [False] * 6)
