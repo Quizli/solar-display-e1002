@@ -174,10 +174,12 @@ class WebDashboardShellTests(unittest.TestCase):
         tablet = css.split("@media(min-width:700px)", 1)[1].split("@media(min-width:1050px)", 1)[0]
         self.assertIn("grid-template-columns:repeat(4,minmax(0,1fr))", tablet)
         self.assertIn(".flow-house,.flow-heat{border-bottom:0}", tablet)
+        self.assertIn(".insight{min-height:0;align-self:start}", tablet)
         desktop = css.split("@media(min-width:1050px)", 1)[1]
         self.assertIn(".header{grid-template-columns:auto 1fr", desktop)
         self.assertIn(".chart{grid-column:1;grid-row:1/3;min-height:420px}", desktop)
         self.assertIn(".chart-placeholder{height:272px}", desktop)
+        self.assertIn(".insight{grid-column:2;grid-row:2;min-height:0;align-self:stretch", desktop)
         self.assertNotIn("hero-grid{margin-top", css)
         self.assertEqual(self.source.count('class="flow-icon"'), 4)
         self.assertEqual(self.source.count('class="flow-icon" viewBox="0 0 24 24"'), 4)
