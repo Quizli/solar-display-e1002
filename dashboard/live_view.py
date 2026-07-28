@@ -188,7 +188,7 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
                 record = database.store_fact_selection(
                     key, current_hour, candidate.fact_id, "history",
                     (initial.selection_energy_kwh if initial.selection_energy_kwh is not None
-                     else yesterday_energy), initial.selection_bucket_start,
+                     else context.yesterday_energy_kwh), initial.selection_bucket_start,
                     context_json=candidate.context_json)
                 selected = decode_and_render(record.fact_id, context, record.context_json)
                 if selected:

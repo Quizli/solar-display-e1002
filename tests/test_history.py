@@ -4,6 +4,7 @@ import unittest
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from dashboard.facts import hour_key
 from dashboard.facts.history import (eligible_historical_candidates,
                                      render_historical)
 from dashboard.facts.models import FactContext
@@ -88,6 +89,14 @@ class HistoricalStorageTest(unittest.TestCase):
             (_utc_text(utc), energy))
         self.db.connection.commit()
 
+    def yield_aggregate(self, local, energy):
+        """Store one five-minute bucket whose integrated yield is ``energy``."""
+        utc = local.astimezone(timezone.utc)
+        self.db.connection.execute(
+            "INSERT INTO aggregates_5m VALUES (?, ?,0,0,50,0,0,?,1,1,1)",
+            (_utc_text(utc), energy * 12, energy))
+        self.db.connection.commit()
+
     def test_daily_queries_use_latest_skip_gaps_and_exclude_current_day(self):
         self.aggregate(datetime(2026, 3, 28, 10, tzinfo=ZURICH), 5)
         self.aggregate(datetime(2026, 3, 28, 20, tzinfo=ZURICH), 12)
@@ -107,3 +116,38 @@ class HistoricalStorageTest(unittest.TestCase):
         self.db.close()
         self.db = SolarDatabase(self.path)
         self.assertEqual(self.db.get_fact_selection("key").context_json, first)
+
+    def test_midnight_morning_history_uses_yesterday_without_new_day_anchor(self):
+        now = datetime(2026, 7, 26, 0, 45, tzinfo=ZURICH)
+        self.yield_aggregate(datetime(2026, 7, 24, 23, 50, tzinfo=ZURICH), 40)
+        self.yield_aggregate(datetime(2026, 7, 25, 23, 50, tzinfo=ZURICH), 60)
+
+        story = build_story(self.db, now, 0, 0)
+
+        self.assertEqual(now.date().isoformat(), "2026-07-26")
+        self.assertEqual(story.fact_id, "HIST_YESTERDAY")
+        self.assertEqual(story.energy_period, "yesterday")
+        self.assertTrue(story.line_1.startswith("Gestern"))
+        self.assertEqual(story.historical_reference_day, "2026-07-25")
+        self.assertEqual(story.selection_energy_kwh, 60)
+        stored = self.db.get_fact_selection(hour_key(now.replace(minute=0)))
+        self.assertEqual(stored.local_day, "2026-07-26")
+        self.assertEqual(stored.selection_energy_kwh, 60)
+
+    def test_historical_record_after_first_production_anchor_keeps_anchor_energy(self):
+        now = datetime(2026, 7, 26, 8, 45, tzinfo=ZURICH)
+        self.yield_aggregate(datetime(2026, 7, 24, 23, 50, tzinfo=ZURICH), 20)
+        self.yield_aggregate(datetime(2026, 7, 25, 23, 50, tzinfo=ZURICH), 30)
+        anchor = now.replace(minute=35).astimezone(timezone.utc)
+        self.db.connection.execute(
+            "INSERT INTO aggregates_5m VALUES (?,1,0,0,50,0,0,34,1,1,1)",
+            (_utc_text(anchor),))
+        self.db.connection.commit()
+
+        story = build_story(self.db, now, 35, 1)
+
+        self.assertEqual(story.fact_id, "HIST_RECORD")
+        self.assertEqual(story.energy_period, "today")
+        self.assertEqual(story.selection_energy_kwh, 34)
+        self.assertEqual(self.db.get_fact_selection(
+            hour_key(now.replace(minute=0))).selection_energy_kwh, 34)
