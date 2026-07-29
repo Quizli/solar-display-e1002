@@ -5,7 +5,8 @@
   const SCHEMA_VERSION = "1.0";
   const REFRESH_MS = 15000;
   const REQUEST_TIMEOUT_MS = 10000;
-  const SOLAR_CAPACITY_KWP = 21.78;
+  // Visual progress calibration only; readings and the dynamic chart remain uncapped.
+  const SOLAR_PROGRESS_MAX_KW = 18.0;
   const SEGMENT_COUNT = 20;
   const TIME_ZONE = "Europe/Zurich";
   const DASH = "—";
@@ -113,7 +114,7 @@
     const states = {};
     Object.entries(componentMap).forEach(([source, targets]) => { const componentState = payload.status.affected_components.includes(source) ? "degraded" : (["available", "cached"].includes(payload.status.components[source]) ? "fresh" : payload.status.components[source]); targets.forEach(target => { states[target] = componentState; }); });
     if (!comparison) states["historical-comparison"] = "missing";
-    return { payload, fields, states, overall: payload.status.overall, statusLabel: payload.status.overall === "fresh" ? `LIVE · ${formatAge(payload.data.age_seconds)}` : payload.status.overall === "degraded" ? `EINGESCHRÄNKT · ${formatAge(payload.data.age_seconds)}` : payload.status.overall === "stale" ? `VERALTET · STAND ${formatTime(payload.generated_at)}` : "DATEN NICHT VERFÜGBAR", directions: { battery: batteryDirection, grid: gridDirection, comparison: comparison ? comparison.direction : "unavailable" }, segments: { solar: segmentCount(payload.live.solar_power_kw, SOLAR_CAPACITY_KWP), battery: segmentCount(payload.live.battery_state_of_charge_percent, 100) }, chart: chartModel(payload.chart.series) };
+    return { payload, fields, states, overall: payload.status.overall, statusLabel: payload.status.overall === "fresh" ? `LIVE · ${formatAge(payload.data.age_seconds)}` : payload.status.overall === "degraded" ? `EINGESCHRÄNKT · ${formatAge(payload.data.age_seconds)}` : payload.status.overall === "stale" ? `VERALTET · STAND ${formatTime(payload.generated_at)}` : "DATEN NICHT VERFÜGBAR", directions: { battery: batteryDirection, grid: gridDirection, heat: states.heat === "fresh" && payload.live.heat_power_kw !== null && payload.live.heat_power_kw >= 0.05 ? "active" : "idle", comparison: comparison ? comparison.direction : "unavailable" }, segments: { solar: segmentCount(payload.live.solar_power_kw, SOLAR_PROGRESS_MAX_KW), battery: segmentCount(payload.live.battery_state_of_charge_percent, 100) }, chart: chartModel(payload.chart.series) };
   }
 
   function chartGeometry(container) {
@@ -163,7 +164,7 @@
   function applyViewModel(root, view) {
     Object.entries(view.fields).forEach(([path, value]) => { const node = root.querySelector(`[data-field="${path}"]`); node.textContent = value; });
     Object.entries(view.states).forEach(([component, value]) => root.querySelector(`[data-component="${component}"]`).setAttribute("data-state", value));
-    root.querySelector('[data-component="battery-flow"]').setAttribute("data-direction", view.directions.battery); root.querySelector('[data-component="grid-flow"]').setAttribute("data-direction", view.directions.grid); root.querySelector('[data-component="historical-comparison"]').setAttribute("data-direction", view.directions.comparison);
+    root.querySelector('[data-component="battery-flow"]').setAttribute("data-direction", view.directions.battery); root.querySelector('[data-component="grid-flow"]').setAttribute("data-direction", view.directions.grid); root.querySelector('[data-component="heat"]').setAttribute("data-direction", view.directions.heat); root.querySelector('[data-component="historical-comparison"]').setAttribute("data-direction", view.directions.comparison);
     [["live.solar_power_kw", view.segments.solar], ["live.battery_state_of_charge_percent", view.segments.battery]].forEach(([field, count]) => root.querySelectorAll(`[data-segments-for="${field}"] [data-segment]`).forEach((node, index) => index < count ? node.setAttribute("data-active", "true") : node.removeAttribute("data-active")));
     renderChart(root.querySelector('[data-field="chart.series"]'), view.chart); applyConnectionState(root, view.overall, view.statusLabel); root.setAttribute("aria-busy", "false");
   }
@@ -189,7 +190,7 @@
     return { refresh, stop, isRunning: () => running, lastGood: () => lastGood };
   }
 
-  const api = Object.freeze({ DATA_URL, SCHEMA_VERSION, REFRESH_MS, REQUEST_TIMEOUT_MS, SOLAR_CAPACITY_KWP, SEGMENT_COUNT, TIME_ZONE, formatNumber, formatDate, formatTime, formatAge, segmentCount, validPayload, chartModel, pathSequences, chartGeometry, chartTimeTicks, chartLayout, buildViewModel, createController });
+  const api = Object.freeze({ DATA_URL, SCHEMA_VERSION, REFRESH_MS, REQUEST_TIMEOUT_MS, SOLAR_PROGRESS_MAX_KW, SEGMENT_COUNT, TIME_ZONE, formatNumber, formatDate, formatTime, formatAge, segmentCount, validPayload, chartModel, pathSequences, chartGeometry, chartTimeTicks, chartLayout, buildViewModel, createController });
   if (typeof window !== "undefined") window.SolarDashboard = api;
   if (typeof document !== "undefined") { const root = document.querySelector('[data-component="dashboard"]'); if (root) createController(root).refresh(); }
 }());

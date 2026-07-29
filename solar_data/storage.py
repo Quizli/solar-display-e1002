@@ -233,6 +233,18 @@ class SolarDatabase:
                   datetime.fromisoformat(item["local_hour"]).astimezone(UTC))
         return self._fact_selection(row)
 
+    def recent_catalog_fact_selections(self, fact_ids, limit: int = 12):
+        """Return latest actually persisted catalogue selections, newest first."""
+        if limit <= 0 or not fact_ids:
+            return []
+        placeholders = ",".join("?" for _ in fact_ids)
+        rows = self.connection.execute(
+            f"""SELECT * FROM fact_history WHERE fact_id IN ({placeholders})
+                ORDER BY created_at_utc DESC, local_hour DESC, dst_fold DESC LIMIT ?""",
+            (*fact_ids, limit),
+        ).fetchall()
+        return [self._fact_selection(row) for row in rows]
+
     def store_snapshot(self, snapshot: LiveData) -> bool:
         timestamp = _aware_utc(snapshot.timestamp)
         values = [getattr(snapshot, field) for field in POWER_FIELDS]
@@ -410,6 +422,72 @@ class SolarDatabase:
         if not math.isfinite(value):
             return None
         return DailyYield(local_day, max(0.0, value))
+
+    def complete_daily_yield(self, local_day: date) -> Optional[DailyYield]:
+        """Return a yield only for a continuously covered Zurich-local day.
+
+        A record day must cover the real UTC span between both local midnights:
+        its first and last buckets may be at most ten minutes from the bounds,
+        no internal aggregate gap may exceed ten minutes, and at least 95% of
+        the expected unique buckets must be valid.  Measuring the real span
+        makes the same rule valid for normal, 23-hour and 25-hour days.
+        """
+        start, end = self._local_day_bounds(local_day)
+        rows = self.connection.execute(
+            """SELECT bucket_start_utc, energy_today_kwh FROM aggregates_5m
+               WHERE bucket_start_utc >= ? AND bucket_start_utc < ?
+               ORDER BY bucket_start_utc""",
+            (_utc_text(start), _utc_text(end)),
+        ).fetchall()
+        return self._qualify_record_day(local_day, rows, start, end)
+
+    @staticmethod
+    def _qualify_record_day(local_day, rows, start, end):
+        """Qualify unique valid buckets against real day length and 95% coverage."""
+        unique = {}
+        for row in rows:
+            instant = _aware_utc(row[0])
+            value = row[1]
+            if (instant < start or instant >= end or instant.second or
+                    instant.microsecond or instant.minute % 5 or
+                    not math.isfinite(value) or value < 0):
+                continue
+            unique.setdefault(instant, value)
+        instants = sorted(unique)
+        expected = int((end - start).total_seconds() // 300)
+        minimum = math.ceil(expected * .95)
+        if len(instants) < minimum:
+            return None
+        tolerance = timedelta(minutes=10)
+        if (instants[0] - start > tolerance or
+                end - (instants[-1] + timedelta(minutes=5)) > tolerance):
+            return None
+        if any(current - previous > tolerance
+               for previous, current in zip(instants, instants[1:])):
+            return None
+        return DailyYield(local_day, unique[instants[-1]])
+
+    def completed_record_daily_yields(self, before_local_day: date,
+                                      limit: Optional[int] = None) -> List[DailyYield]:
+        """Return fully covered days eligible for production-record comparisons."""
+        before, _ = self._local_day_bounds(before_local_day)
+        rows = self.connection.execute(
+            """SELECT bucket_start_utc, energy_today_kwh FROM aggregates_5m
+               WHERE bucket_start_utc < ? ORDER BY bucket_start_utc""",
+            (_utc_text(before),),
+        ).fetchall()
+        grouped = {}
+        for row in rows:
+            local_day = _aware_utc(row[0]).astimezone(ZURICH).date()
+            grouped.setdefault(local_day, []).append(row)
+        result = []
+        for local_day in sorted(grouped):
+            start, end = self._local_day_bounds(local_day)
+            complete = self._qualify_record_day(
+                local_day, grouped[local_day], start, end)
+            if complete is not None:
+                result.append(complete)
+        return result[-limit:] if limit else result
 
     def completed_daily_yields(self, before_local_day: date,
                                limit: Optional[int] = None) -> List[DailyYield]:

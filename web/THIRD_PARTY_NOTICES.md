@@ -1,8 +1,9 @@
 # Drittkomponenten
 
-Die Symbole in `assets/icons.svg` basieren auf **Lucide 0.468.0**
-(https://lucide.dev) und werden unter der ISC-Lizenz verwendet. Es wurden nur
-die benötigten SVG-Pfade lokal übernommen; es gibt keine CDN-Abhängigkeit.
+Einzelne Inline-SVG-Geometrien in `dashboard.html`, insbesondere Trends und
+Richtungspfeile, basieren auf beziehungsweise sind abgeleitet von
+**Lucide 0.468.0** (https://lucide.dev) und werden unter der ISC-Lizenz
+verwendet. Es gibt keine CDN- oder sonstige externe Laufzeitabhängigkeit.
 
 Die Glas-Komponenten verwenden projektspezifische Tokens aus dem Design-Freeze
 «Solar Glass Light v1.0». Eine GlassKit-Bibliothek wird nicht ausgeliefert.

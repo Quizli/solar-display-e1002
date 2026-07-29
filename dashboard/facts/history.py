@@ -29,11 +29,16 @@ def _yield(database, day):
     return item.energy_kwh if item else None
 
 
+def _record_yields(database, before):
+    method = getattr(database, "completed_record_daily_yields", None)
+    return method(before) if method else database.completed_daily_yields(before)
+
+
 def eligible_historical_candidates(database, context):
     phase, period = determine_phase(context)
     today = context.now_local.date()
     result = []
-    earlier = database.completed_daily_yields(today)
+    earlier = _record_yields(database, today)
     if period == "today" and len(earlier) >= 2 and context.today_energy_kwh is not None:
         prior_record = max(item.energy_kwh for item in earlier)
         if context.today_energy_kwh > prior_record + MINIMUM_KWH:
@@ -42,6 +47,25 @@ def eligible_historical_candidates(database, context):
             result.append(HistoricalCandidate("HIST_RECORD", {
                 "reference_day": record_day.isoformat(),
                 "baseline_energy_kwh": prior_record,
+                "period": "today",
+            }))
+
+    yesterday = today - timedelta(days=1)
+    yesterday_item = next((item for item in earlier
+                           if item.local_day == yesterday), None)
+    yesterday_yield = yesterday_item.energy_kwh if yesterday_item else None
+    older = [item for item in earlier if item.local_day < yesterday]
+    if yesterday_yield is not None and len(older) >= 2:
+        prior_record = max(item.energy_kwh for item in older)
+        if yesterday_yield > prior_record + MINIMUM_KWH:
+            record_day = max(item.local_day for item in older
+                             if item.energy_kwh == prior_record)
+            result.append(HistoricalCandidate("HIST_RECORD", {
+                "reference_day": yesterday.isoformat(),
+                "previous_record_day": record_day.isoformat(),
+                "baseline_energy_kwh": prior_record,
+                "comparison_energy_kwh": yesterday_yield,
+                "period": "yesterday",
             }))
 
     selected_day = None
@@ -98,11 +122,16 @@ def render_historical(fact_id, context, payload) -> Optional[Story]:
         if baseline < MINIMUM_KWH:
             return None
         if fact_id == "HIST_RECORD":
-            value = context.today_energy_kwh
-            if value is None:
-                return None
-            lines = (f"Heute sind bereits {format_fact_number(value, 'energy')} kWh Solarstrom entstanden.",
-                     f"Der bisherige Rekord lag bei {format_fact_number(baseline, 'energy')} kWh.")
+            if payload.get("period") == "yesterday":
+                value = float(payload["comparison_energy_kwh"])
+                lines = (f"Gestern entstanden {format_fact_number(value, 'energy')} kWh Solarstrom.",
+                         "Neuer Tagesrekord seit Beginn der Aufzeichnung.")
+            else:
+                value = context.today_energy_kwh
+                if value is None:
+                    return None
+                lines = (f"Heute sind bereits {format_fact_number(value, 'energy')} kWh Solarstrom entstanden.",
+                         f"Der bisherige Rekord lag bei {format_fact_number(baseline, 'energy')} kWh.")
         else:
             value = float(payload["comparison_energy_kwh"])
             morning = payload.get("period") == "yesterday"

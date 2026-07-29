@@ -45,7 +45,6 @@ class WebDashboardShellTests(unittest.TestCase):
 
     def test_production_assets_exist_and_html_parses(self):
         self.assertTrue(CSS.is_file())
-        self.assertTrue(ICONS.is_file())
         self.assertTrue(JAVASCRIPT.is_file())
         self.assertIn("<!doctype html>", self.source.lower())
         self.assertIn("</html>", self.source.lower())
@@ -133,7 +132,8 @@ class WebDashboardShellTests(unittest.TestCase):
     def test_direction_indicators_use_explicit_direction_states(self):
         css = CSS.read_text(encoding="utf-8")
         for icon in ("arrow-down", "arrow-up", "trend-up", "trend-down", "move-right"):
-            self.assertIn("icons.svg#" + icon, self.source)
+            self.assertIn('id="' + icon + '"', self.source)
+            self.assertIn('href="#' + icon + '"', self.source)
         for direction in ("charging", "discharging", "importing", "exporting",
                           "higher", "lower", "similar"):
             self.assertIn("data-direction=" + direction, css)
@@ -181,8 +181,22 @@ class WebDashboardShellTests(unittest.TestCase):
         self.assertIn(".chart-placeholder{height:272px}", desktop)
         self.assertIn(".insight{grid-column:2;grid-row:2;min-height:0;align-self:stretch", desktop)
         self.assertNotIn("hero-grid{margin-top", css)
-        self.assertEqual(self.source.count('class="flow-icon"'), 4)
-        self.assertEqual(self.source.count('class="flow-icon" viewBox="0 0 24 24"'), 4)
+        self.assertEqual(self.source.count('class="flow-icon icon"'), 4)
+
+    def test_complete_inline_icon_family_and_license_notice(self):
+        for icon in ("sun", "sunrise", "sunset", "battery", "house", "heat",
+                     "battery-flow", "grid", "yield", "self-use", "co2",
+                     "sparkles", "history", "trend-up", "trend-down"):
+            self.assertIn(f'id="{icon}"', self.source)
+        self.assertEqual(self.source.count('class="balance-icon icon"'), 3)
+        self.assertNotIn("assets/icons.svg", self.source)
+        self.assertNotRegex(self.source, r'<(?:img|image)\b')
+        decorative = re.findall(r'<svg(?! class="icon-definitions")[^>]*>', self.source)
+        self.assertTrue(decorative)
+        self.assertTrue(all('aria-hidden="true"' in item for item in decorative))
+        notice = (ROOT / "web" / "THIRD_PARTY_NOTICES.md").read_text()
+        self.assertIn("Lucide", notice)
+        self.assertIn("ISC-Lizenz", notice)
 
     def test_comparison_has_a_meaningful_empty_state_and_insight_color_is_shared(self):
         javascript = JAVASCRIPT.read_text(encoding="utf-8")

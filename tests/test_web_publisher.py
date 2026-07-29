@@ -205,7 +205,7 @@ process.stdout.write(JSON.stringify({
             payload["chart"]["series"][0]["battery_state_of_charge_percent"])
         json.dumps(payload, allow_nan=False)
 
-    def test_normal_insight_and_independent_historical_comparison_coexist(self):
+    def test_incomplete_history_does_not_create_comparison_or_record(self):
         self.snapshot()
         self.aggregate(5)
         local_hour = self.now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
@@ -222,15 +222,8 @@ process.stdout.write(JSON.stringify({
         payload, _ = self.payload()
         comparison = payload["historical_comparison"]
         self.assertEqual(payload["insight"]["fact_id"], fact.fact_id)
-        self.assertNotEqual(payload["insight"]["fact_id"], comparison["type"])
-        self.assertEqual(comparison["direction"], "higher")
-        self.assertEqual(comparison["difference_percent"], 20)
-        self.assertEqual(comparison["comparison_value_kwh"], 12)
-        self.assertEqual(comparison["baseline_kwh"], 10)
-        self.assertEqual(comparison["reference_day"], "2026-07-24")
-        self.assertEqual(comparison["reference_period"], "today")
-        self.assertNotEqual(comparison["statement"], " ".join(
-            (payload["insight"]["line_1"], payload["insight"]["line_2"])))
+        self.assertIsNone(comparison)
+
 
     def test_historical_insight_is_not_duplicated_by_comparison(self):
         self.snapshot()
@@ -256,10 +249,9 @@ process.stdout.write(JSON.stringify({
                      ("Vergleich zum Schnitt.", "Heute liegt darüber."))
             return SimpleNamespace(line_1=lines[0], line_2=lines[1])
 
-        with patch("dashboard.web_publisher.eligible_historical_candidates",
-                   return_value=candidates), patch(
-                       "dashboard.web_publisher.render_historical",
-                       side_effect=rendered):
+        view["_historical_candidates"] = candidates
+        with patch("dashboard.web_publisher.render_historical",
+                   side_effect=rendered):
             payload = build_web_payload(
                 self.database, view, snapshot, self.now)
 
@@ -270,11 +262,23 @@ process.stdout.write(JSON.stringify({
         self.assertNotEqual(comparison["type"], payload["insight"]["fact_id"])
         self.assertNotEqual(comparison["statement"], insight_text)
 
-        with patch("dashboard.web_publisher.eligible_historical_candidates",
-                   return_value=candidates[:1]):
-            without_alternative = build_web_payload(
-                self.database, view, snapshot, self.now)
+        view["_historical_candidates"] = candidates[:1]
+        without_alternative = build_web_payload(
+            self.database, view, snapshot, self.now)
         self.assertIsNone(without_alternative["historical_comparison"])
+
+    def test_publisher_reuses_candidates_from_single_live_view_build(self):
+        self.snapshot()
+        snapshot = self.database.latest_snapshot()
+        from dashboard.facts.history import eligible_historical_candidates
+        with patch("dashboard.live_view.eligible_historical_candidates",
+                   wraps=eligible_historical_candidates) as live_candidates, patch(
+                       "dashboard.web_publisher.eligible_historical_candidates",
+                       wraps=eligible_historical_candidates) as web_candidates:
+            view = build_live_view(self.database, self.now, snapshot=snapshot)
+            build_web_payload(self.database, view, snapshot, self.now)
+        self.assertEqual(live_candidates.call_count, 1)
+        self.assertEqual(web_candidates.call_count, 0)
 
     def test_atomic_write_permissions_privacy_and_svg_regression(self):
         self.snapshot()

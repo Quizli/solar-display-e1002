@@ -191,7 +191,7 @@ class FactsEngineTest(unittest.TestCase):
         self.assertFalse(has_eligible_fact_for_energy(161))
 
     def test_every_catalog_template_fits_at_representative_energies(self):
-        for energy in (5, 25, 75, 150):
+        for energy in (1, 5, 25, 75, 150, 160):
             for fact in FACTS:
                 with self.subTest(energy=energy, fact=fact.fact_id):
                     self.assertIsNotNone(_render(fact, energy, "heutigen"))
@@ -261,3 +261,20 @@ class FactsEngineTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ExpandedCatalogTest(unittest.TestCase):
+    def test_catalog_size_and_required_energy_pools(self):
+        from dashboard.facts.catalog import FACTS
+        self.assertGreaterEqual(len(FACTS), 30)
+        required = {1: 10, 5: 15, 25: 22, 80: 22, 121: 16, 142.2: 16, 160: 16}
+        for energy, minimum in required.items():
+            with self.subTest(energy=energy):
+                self.assertGreaterEqual(sum(f.min_kwh <= energy <= f.max_kwh for f in FACTS), minimum)
+
+    def test_lru_uses_each_facts_most_recent_occurrence(self):
+        from dashboard.live_view import _catalog_last_use_ranks
+        history = [type("Selection", (), {"fact_id": fact_id})()
+                   for fact_id in ("N01", "N02", "N03", "N02")]
+        ranks = _catalog_last_use_ranks(history)
+        self.assertEqual(ranks, {"N01": 0, "N02": 1, "N03": 2})
+        self.assertEqual(max(("N01", "N02", "N03"), key=ranks.get), "N03")
