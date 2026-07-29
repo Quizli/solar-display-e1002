@@ -109,16 +109,20 @@ def build_fact_context(database, now, today_energy_kwh, solar_power_kw, sun=None
 
 
 def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
-                persist_selection=True):
+                persist_selection=True, context=None,
+                historical_candidates=None):
     """Select the renderer-independent, hourly persisted dashboard story."""
-    context = build_fact_context(database, now, today_energy_kwh, solar_power_kw, sun)
+    context = context or build_fact_context(
+        database, now, today_energy_kwh, solar_power_kw, sun)
     now_local = context.now_local
     current_hour = now_local.replace(minute=0, second=0, microsecond=0)
     previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
     anchors = context.selection_energy_by_hour
     initial = build_story_from_context(context)
     key = hour_key(current_hour)
-    pinned_records = [item for item in eligible_historical_candidates(database, context)
+    if historical_candidates is None:
+        historical_candidates = eligible_historical_candidates(database, context)
+    pinned_records = [item for item in historical_candidates
                       if item.fact_id == "HIST_RECORD"]
     if pinned_records:
         current = next((item for item in pinned_records
@@ -201,7 +205,7 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
     used_history = any(item.fact_id in HISTORICAL_IDS for item in
                        database.fact_selections_for_local_day(now_local.date()))
     if not used_history:
-        historical = eligible_historical_candidates(database, context)
+        historical = historical_candidates
         if historical:
             candidate = historical[0]
             rendered = render_historical(candidate.fact_id, context, candidate.context)
@@ -343,9 +347,14 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
                if sun else None)
     weather_code = sun.weather_code if sun else None
     weather_variant = weather_icon_variant(weather_code)
+    fact_context = build_fact_context(
+        database, now_utc, day_yield, power["solar_power_kw"], sun)
+    historical_candidates = eligible_historical_candidates(database, fact_context)
     story = build_story(database, now_utc, day_yield, power["solar_power_kw"], sun,
                         persist_selection=(freshness == "fresh" and
-                                           persist_fact_selection))
+                                           persist_fact_selection),
+                        context=fact_context,
+                        historical_candidates=historical_candidates)
     if freshness == "stale":
         story = Story("STALE", "status", "Datenstand {} Uhr".format(local_timestamp.strftime("%H:%M")),
                       "Aktualisierung der Solardaten prüfen", story.phase,
@@ -382,6 +391,7 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "chart_battery_line": chart.battery_line,
     })
     return {
+        "_historical_candidates": historical_candidates,
         "freshness": freshness,
         "latest_snapshot_timestamp": snapshot_timestamp.isoformat() if snapshot_timestamp else None,
         "power_timestamp": power_timestamp.isoformat() if power_timestamp else None,

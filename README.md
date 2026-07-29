@@ -394,9 +394,17 @@ Vergleiche, Katalog-Facts und technische Rückfälle.
 
 Für Rekordvergleiche gilt ein vergangener Tag nur dann als vollständig, wenn seine
 5-Minuten-Aggregate den realen UTC-Zeitraum zwischen beiden Zürcher Mitternachten
-mit höchstens zehn Minuten Rand- oder Binnenlücke abdecken. Dadurch werden einzelne
-Buckets und abgebrochene Tage ausgeschlossen, während die 23 beziehungsweise 25
-realen Stunden der Zürcher DST-Wechseltage ohne Sonderfall korrekt geprüft werden.
+mit höchstens zehn Minuten Rand- oder Binnenlücke abdecken und mindestens 95 Prozent
+der für diese reale Tagesdauer erwarteten eindeutigen, gültigen Buckets enthalten.
+Die Mindestzahl wird mit `ceil(expected × 0.95)` aufgerundet: 263 von 276 Buckets am
+23-Stunden-Tag, 274 von 288 am normalen Tag und 285 von 300 am 25-Stunden-Tag.
+Dadurch werden einzelne, halb abgedeckte und abgebrochene Tage ausgeschlossen;
+Duplikate erhöhen die Quote nicht. Die Zürcher DST-Wechseltage werden ohne naive
+24-Stunden-Annahme über ihre tatsächlichen UTC-Grenzen geprüft.
+Die Aggregate aller historischen Tage werden dazu in einer gemeinsamen SQL-Abfrage
+geladen, lokal gruppiert und in einem Durchlauf qualifiziert. Die so ermittelten
+historischen Kandidaten werden innerhalb derselben Publisher-Auswertung für Insight
+und historischen Vergleich wiederverwendet; es gibt keine Abfrage pro Historientag.
 Gewöhnliche Produktionszustände wie Nacht, `ZERO` oder ein noch nicht angelaufener
 Tag verdrängen einen aktiven Rekord nicht.
 

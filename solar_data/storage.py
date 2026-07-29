@@ -428,31 +428,65 @@ class SolarDatabase:
 
         A record day must cover the real UTC span between both local midnights:
         its first and last buckets may be at most ten minutes from the bounds,
-        and no internal aggregate gap may exceed ten minutes.  Measuring the
-        real span makes the same rule valid for normal, 23-hour and 25-hour days.
+        no internal aggregate gap may exceed ten minutes, and at least 95% of
+        the expected unique buckets must be valid.  Measuring the real span
+        makes the same rule valid for normal, 23-hour and 25-hour days.
         """
-        rows = self.aggregates_for_local_day(local_day)
-        if len(rows) < 2:
-            return None
         start, end = self._local_day_bounds(local_day)
-        instants = [_aware_utc(row.bucket_start) for row in rows]
+        rows = self.connection.execute(
+            """SELECT bucket_start_utc, energy_today_kwh FROM aggregates_5m
+               WHERE bucket_start_utc >= ? AND bucket_start_utc < ?
+               ORDER BY bucket_start_utc""",
+            (_utc_text(start), _utc_text(end)),
+        ).fetchall()
+        return self._qualify_record_day(local_day, rows, start, end)
+
+    @staticmethod
+    def _qualify_record_day(local_day, rows, start, end):
+        """Qualify unique valid buckets against real day length and 95% coverage."""
+        unique = {}
+        for row in rows:
+            instant = _aware_utc(row[0])
+            value = row[1]
+            if (instant < start or instant >= end or instant.second or
+                    instant.microsecond or instant.minute % 5 or
+                    not math.isfinite(value) or value < 0):
+                continue
+            unique.setdefault(instant, value)
+        instants = sorted(unique)
+        expected = int((end - start).total_seconds() // 300)
+        minimum = math.ceil(expected * .95)
+        if len(instants) < minimum:
+            return None
         tolerance = timedelta(minutes=10)
-        if instants[0] - start > tolerance or end - (instants[-1] + timedelta(minutes=5)) > tolerance:
+        if (instants[0] - start > tolerance or
+                end - (instants[-1] + timedelta(minutes=5)) > tolerance):
             return None
         if any(current - previous > tolerance
                for previous, current in zip(instants, instants[1:])):
             return None
-        value = rows[-1].energy_today_kwh
-        if not math.isfinite(value) or value < 0:
-            return None
-        return DailyYield(local_day, value)
+        return DailyYield(local_day, unique[instants[-1]])
 
     def completed_record_daily_yields(self, before_local_day: date,
                                       limit: Optional[int] = None) -> List[DailyYield]:
         """Return fully covered days eligible for production-record comparisons."""
-        candidates = self.completed_daily_yields(before_local_day)
-        result = [complete for item in candidates
-                  if (complete := self.complete_daily_yield(item.local_day)) is not None]
+        before, _ = self._local_day_bounds(before_local_day)
+        rows = self.connection.execute(
+            """SELECT bucket_start_utc, energy_today_kwh FROM aggregates_5m
+               WHERE bucket_start_utc < ? ORDER BY bucket_start_utc""",
+            (_utc_text(before),),
+        ).fetchall()
+        grouped = {}
+        for row in rows:
+            local_day = _aware_utc(row[0]).astimezone(ZURICH).date()
+            grouped.setdefault(local_day, []).append(row)
+        result = []
+        for local_day in sorted(grouped):
+            start, end = self._local_day_bounds(local_day)
+            complete = self._qualify_record_day(
+                local_day, grouped[local_day], start, end)
+            if complete is not None:
+                result.append(complete)
         return result[-limit:] if limit else result
 
     def completed_daily_yields(self, before_local_day: date,

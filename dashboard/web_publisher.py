@@ -38,9 +38,10 @@ def _flow(value, positive, negative, available=True):
 
 
 def _historical(database, now, day_yield, solar_power, sun,
-                insight_fact_id=None, insight_statement=None):
+                insight_fact_id=None, insight_statement=None, candidates=None):
     context = build_fact_context(database, now, day_yield, solar_power, sun)
-    candidates = eligible_historical_candidates(database, context)
+    if candidates is None:
+        candidates = eligible_historical_candidates(database, context)
     for candidate in candidates:
         if candidate.fact_id == insight_fact_id:
             continue
@@ -137,7 +138,8 @@ def build_web_payload(database, view, snapshot, now=None):
     historical = _historical(
         database, now_utc, display.get("day_yield_kwh"),
         snapshot.solar_power_kw if snapshot else None,
-        _sun_from_view(view, local_day), story.get("fact_id"), insight_statement)
+        _sun_from_view(view, local_day), story.get("fact_id"), insight_statement,
+        view.get("_historical_candidates"))
     payload = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": now_utc.isoformat(),
