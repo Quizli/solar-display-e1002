@@ -29,11 +29,22 @@ def _yield(database, day):
     return item.energy_kwh if item else None
 
 
+def _complete_yield(database, day):
+    method = getattr(database, "complete_daily_yield", None)
+    item = method(day) if method else database.daily_yield_from_aggregates(day)
+    return item.energy_kwh if item else None
+
+
+def _record_yields(database, before):
+    method = getattr(database, "completed_record_daily_yields", None)
+    return method(before) if method else database.completed_daily_yields(before)
+
+
 def eligible_historical_candidates(database, context):
     phase, period = determine_phase(context)
     today = context.now_local.date()
     result = []
-    earlier = database.completed_daily_yields(today)
+    earlier = _record_yields(database, today)
     if period == "today" and len(earlier) >= 2 and context.today_energy_kwh is not None:
         prior_record = max(item.energy_kwh for item in earlier)
         if context.today_energy_kwh > prior_record + MINIMUM_KWH:
@@ -46,8 +57,8 @@ def eligible_historical_candidates(database, context):
             }))
 
     yesterday = today - timedelta(days=1)
-    yesterday_yield = _yield(database, yesterday)
-    older = database.completed_daily_yields(yesterday)
+    yesterday_yield = _complete_yield(database, yesterday)
+    older = _record_yields(database, yesterday)
     if yesterday_yield is not None and len(older) >= 2:
         prior_record = max(item.energy_kwh for item in older)
         if yesterday_yield > prior_record + MINIMUM_KWH:

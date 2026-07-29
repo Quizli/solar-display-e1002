@@ -423,6 +423,38 @@ class SolarDatabase:
             return None
         return DailyYield(local_day, max(0.0, value))
 
+    def complete_daily_yield(self, local_day: date) -> Optional[DailyYield]:
+        """Return a yield only for a continuously covered Zurich-local day.
+
+        A record day must cover the real UTC span between both local midnights:
+        its first and last buckets may be at most ten minutes from the bounds,
+        and no internal aggregate gap may exceed ten minutes.  Measuring the
+        real span makes the same rule valid for normal, 23-hour and 25-hour days.
+        """
+        rows = self.aggregates_for_local_day(local_day)
+        if len(rows) < 2:
+            return None
+        start, end = self._local_day_bounds(local_day)
+        instants = [_aware_utc(row.bucket_start) for row in rows]
+        tolerance = timedelta(minutes=10)
+        if instants[0] - start > tolerance or end - (instants[-1] + timedelta(minutes=5)) > tolerance:
+            return None
+        if any(current - previous > tolerance
+               for previous, current in zip(instants, instants[1:])):
+            return None
+        value = rows[-1].energy_today_kwh
+        if not math.isfinite(value) or value < 0:
+            return None
+        return DailyYield(local_day, value)
+
+    def completed_record_daily_yields(self, before_local_day: date,
+                                      limit: Optional[int] = None) -> List[DailyYield]:
+        """Return fully covered days eligible for production-record comparisons."""
+        candidates = self.completed_daily_yields(before_local_day)
+        result = [complete for item in candidates
+                  if (complete := self.complete_daily_yield(item.local_day)) is not None]
+        return result[-limit:] if limit else result
+
     def completed_daily_yields(self, before_local_day: date,
                                limit: Optional[int] = None) -> List[DailyYield]:
         """Return completed aggregate-backed days chronologically, skipping gaps."""

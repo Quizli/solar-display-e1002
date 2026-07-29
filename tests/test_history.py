@@ -97,6 +97,96 @@ class HistoricalStorageTest(unittest.TestCase):
             (_utc_text(utc), energy * 12, energy))
         self.db.connection.commit()
 
+    def complete_day(self, local_day, energy):
+        start = datetime.combine(local_day, datetime.min.time(), tzinfo=ZURICH)
+        end = datetime.combine(local_day + timedelta(days=1), datetime.min.time(), tzinfo=ZURICH)
+        instant = start.astimezone(timezone.utc)
+        end_utc = end.astimezone(timezone.utc)
+        rows = []
+        while instant < end_utc:
+            elapsed = (instant - start.astimezone(timezone.utc)).total_seconds()
+            duration = (end_utc - start.astimezone(timezone.utc)).total_seconds()
+            value = energy * min(1, (elapsed + 300) / duration)
+            rows.append((_utc_text(instant), 0, 0, 0, 50, 0, 0, value, 1, 1, 1))
+            instant += timedelta(minutes=5)
+        self.db.connection.executemany(
+            "INSERT INTO aggregates_5m VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+        self.db.connection.commit()
+
+    def test_single_bucket_is_not_a_complete_record_day(self):
+        self.yield_aggregate(datetime(2026, 7, 24, 12, tzinfo=ZURICH), 40)
+        self.assertIsNone(self.db.complete_daily_yield(date(2026, 7, 24)))
+
+    def test_fragmented_day_is_not_a_complete_record_day(self):
+        for hour in (0, 1, 12, 23):
+            self.aggregate(datetime(2026, 7, 24, hour, tzinfo=ZURICH), hour)
+        self.assertIsNone(self.db.complete_daily_yield(date(2026, 7, 24)))
+
+    def test_complete_normal_and_dst_days_are_accepted(self):
+        for local_day in (date(2026, 7, 24), date(2026, 3, 29), date(2026, 10, 25)):
+            with self.subTest(local_day=local_day):
+                self.complete_day(local_day, 40)
+                self.assertAlmostEqual(self.db.complete_daily_yield(local_day).energy_kwh, 40)
+
+    def test_yesterday_record_beats_zero_for_entire_following_day(self):
+        for local_day, energy in ((date(2026, 7, 22), 20),
+                                  (date(2026, 7, 23), 30),
+                                  (date(2026, 7, 24), 40)):
+            self.complete_day(local_day, energy)
+        for hour, minute in ((0, 5), (1, 5), (8, 0), (23, 55)):
+            story = build_story(self.db, datetime(2026, 7, 25, hour, minute,
+                                                   tzinfo=ZURICH), 0, 0)
+            self.assertEqual(story.fact_id, "HIST_RECORD")
+            self.assertEqual(story.energy_kwh, 40)
+
+    def test_incomplete_days_cannot_create_yesterday_record(self):
+        for local_day, energy in ((date(2026, 7, 22), 20),
+                                  (date(2026, 7, 23), 30),
+                                  (date(2026, 7, 24), 40)):
+            self.yield_aggregate(datetime.combine(local_day, datetime.min.time(),
+                                                   tzinfo=ZURICH).replace(hour=12), energy)
+        story = build_story(self.db, datetime(2026, 7, 25, 8, tzinfo=ZURICH), 0, 0)
+        self.assertNotEqual(story.fact_id, "HIST_RECORD")
+
+    def test_current_record_updates_value_and_keeps_baseline_until_midnight(self):
+        self.complete_day(date(2026, 7, 23), 20)
+        self.complete_day(date(2026, 7, 24), 30)
+        morning = build_story(self.db, datetime(2026, 7, 25, 12, tzinfo=ZURICH),
+                              30.2, 2)
+        evening = build_story(self.db, datetime(2026, 7, 25, 23, 59,
+                                                tzinfo=ZURICH), 42, 1)
+        self.assertEqual((morning.fact_id, evening.fact_id),
+                         ("HIST_RECORD", "HIST_RECORD"))
+        self.assertEqual((morning.energy_kwh, evening.energy_kwh), (30.2, 42))
+        self.assertEqual(morning.historical_baseline_kwh, 30)
+        self.assertEqual(evening.historical_baseline_kwh, 30)
+
+    def test_current_record_wins_over_yesterday_and_pin_expires_next_day(self):
+        for local_day, energy in ((date(2026, 7, 22), 20),
+                                  (date(2026, 7, 23), 30),
+                                  (date(2026, 7, 24), 40)):
+            self.complete_day(local_day, energy)
+        current = build_story(self.db, datetime(2026, 7, 25, 14, tzinfo=ZURICH),
+                              40.2, 2)
+        expired = build_story(self.db, datetime(2026, 7, 26, 8, tzinfo=ZURICH),
+                              0, 0)
+        self.assertEqual(current.fact_id, "HIST_RECORD")
+        self.assertEqual(current.energy_period, "today")
+        self.assertNotEqual(expired.fact_id, "HIST_RECORD")
+
+    def test_record_result_survives_database_restart(self):
+        for local_day, energy in ((date(2026, 7, 22), 20),
+                                  (date(2026, 7, 23), 30),
+                                  (date(2026, 7, 24), 40)):
+            self.complete_day(local_day, energy)
+        now = datetime(2026, 7, 25, 8, tzinfo=ZURICH)
+        before = build_story(self.db, now, 0, 0)
+        self.db.close()
+        self.db = SolarDatabase(self.path)
+        after = build_story(self.db, now, 0, 0)
+        self.assertEqual((before.fact_id, before.line_1, before.line_2),
+                         (after.fact_id, after.line_1, after.line_2))
+
     def test_daily_queries_use_latest_skip_gaps_and_exclude_current_day(self):
         self.aggregate(datetime(2026, 3, 28, 10, tzinfo=ZURICH), 5)
         self.aggregate(datetime(2026, 3, 28, 20, tzinfo=ZURICH), 12)
@@ -136,8 +226,8 @@ class HistoricalStorageTest(unittest.TestCase):
 
     def test_historical_record_after_first_production_anchor_keeps_anchor_energy(self):
         now = datetime(2026, 7, 26, 8, 45, tzinfo=ZURICH)
-        self.yield_aggregate(datetime(2026, 7, 24, 23, 50, tzinfo=ZURICH), 20)
-        self.yield_aggregate(datetime(2026, 7, 25, 23, 50, tzinfo=ZURICH), 30)
+        self.complete_day(date(2026, 7, 24), 20)
+        self.complete_day(date(2026, 7, 25), 30)
         anchor = now.replace(minute=35).astimezone(timezone.utc)
         self.db.connection.execute(
             "INSERT INTO aggregates_5m VALUES (?,1,0,0,50,0,0,34,1,1,1)",

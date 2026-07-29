@@ -117,12 +117,6 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
     previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
     anchors = context.selection_energy_by_hour
     initial = build_story_from_context(context)
-    morning_history = initial.phase in ("pre_sunrise", "morning_waiting")
-    if initial.family == "status" and not morning_history:
-        return initial
-    if not persist_selection:
-        return initial
-
     key = hour_key(current_hour)
     pinned_records = [item for item in eligible_historical_candidates(database, context)
                       if item.fact_id == "HIST_RECORD"]
@@ -133,16 +127,23 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
             "HIST_RECORD", context, (current or pinned_records[0]).context)
         if rendered:
             candidate = current or pinned_records[0]
-            database.store_fact_selection(
-                key, current_hour, "HIST_RECORD", "history",
-                context.selection_energy_kwh,
-                context.selection_bucket_by_hour.get(key),
-                context_json=candidate.context_json)
+            if persist_selection:
+                database.store_fact_selection(
+                    key, current_hour, "HIST_RECORD", "history",
+                    context.selection_energy_kwh,
+                    context.selection_bucket_by_hour.get(key),
+                    context_json=candidate.context_json)
             return Story(**{**rendered.__dict__,
                             "selection_energy_kwh": context.selection_energy_kwh,
                             "selection_bucket_start": context.selection_bucket_by_hour.get(
                                 hour_key(current_hour)),
                             "selection_source": "pinned_record"})
+
+    morning_history = initial.phase in ("pre_sunrise", "morning_waiting")
+    if initial.family == "status" and not morning_history:
+        return initial
+    if not persist_selection:
+        return initial
 
     previous = database.latest_fact_selection_before(current_hour)
     previous_energy = (previous.selection_energy_kwh if previous else
@@ -267,7 +268,7 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
                      if item[0].fact_id not in used_yesterday), selected_stage[0][0])
     else:
         all_history = database.recent_catalog_fact_selections(tuple(FACTS_BY_ID), 100000)
-        rank = {item.fact_id: index for index, item in enumerate(all_history)}
+        rank = _catalog_last_use_ranks(all_history)
         pool = [item for item in candidates if other_family(item)] or candidates
         fact = max(pool, key=lambda item: rank.get(item[0].fact_id, len(rank) + 1))[0]
     record = database.store_fact_selection(
@@ -280,6 +281,14 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
     return (story_for_catalog_fact(
         context, fact, record.selection_energy_kwh, previous_energy,
         record.selection_bucket_start, persisted=True, source="new") or initial)
+
+
+def _catalog_last_use_ranks(newest_first):
+    """Map each catalogue id to its newest position without older overwrites."""
+    ranks = {}
+    for index, item in enumerate(newest_first):
+        ranks.setdefault(item.fact_id, index)
+    return ranks
 
 
 def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,

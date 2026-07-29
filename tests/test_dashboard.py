@@ -18,7 +18,9 @@ from sun_data.cache import SunDataResult
 from sun_data.client import SunData
 from dashboard.publisher import publish_view
 from fronius.model import LiveData
-from renderer.src.render import format_day_yield, main as render_main, render_dashboard
+from renderer.src.render import (SOLAR_PROGRESS_MAX_KW, format_day_yield,
+                                 main as render_main, render_dashboard,
+                                 segment_count)
 from solar_data.storage import SolarDatabase, _utc_text
 
 
@@ -29,6 +31,13 @@ class DashboardTest(unittest.TestCase):
 
     def tearDown(self):
         self.db.close()
+
+    def test_eink_solar_progress_scale_is_18_kw_and_bounded(self):
+        self.assertEqual(SOLAR_PROGRESS_MAX_KW, 18.0)
+        self.assertEqual([segment_count(value, SOLAR_PROGRESS_MAX_KW)
+                          for value in (0, 9, 18, 22)], [0, 10, 20, 20])
+        self.assertEqual(segment_count(-5, SOLAR_PROGRESS_MAX_KW), 0)
+        self.assertEqual(segment_count(100, SOLAR_PROGRESS_MAX_KW), 20)
 
     def snapshot(self, timestamp=None, battery=False, heat_available=True,
                  energy_today=0, energy_total=None):

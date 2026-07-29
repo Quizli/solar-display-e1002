@@ -392,6 +392,14 @@ der endgültige Rekord des Vortags noch den ganzen Folgetag angeheftet. Fehlende
 veraltete Betriebsdaten bleiben höher priorisiert. Danach folgen andere historische
 Vergleiche, Katalog-Facts und technische Rückfälle.
 
+Für Rekordvergleiche gilt ein vergangener Tag nur dann als vollständig, wenn seine
+5-Minuten-Aggregate den realen UTC-Zeitraum zwischen beiden Zürcher Mitternachten
+mit höchstens zehn Minuten Rand- oder Binnenlücke abdecken. Dadurch werden einzelne
+Buckets und abgebrochene Tage ausgeschlossen, während die 23 beziehungsweise 25
+realen Stunden der Zürcher DST-Wechseltage ohne Sonderfall korrekt geprüft werden.
+Gewöhnliche Produktionszustände wie Nacht, `ZERO` oder ein noch nicht angelaufener
+Tag verdrängen einen aktiven Rekord nicht.
+
 Reguläre Katalog-Facts rotieren unabhängig davon. Die Auswahl vermeidet zuerst heute
 verwendete Facts, die letzten zwölf tatsächlich angezeigten Katalog-Facts und die
 vorherige Familie; gestern gezeigte Motive werden innerhalb derselben Stufe
@@ -407,4 +415,6 @@ HTML-Chart bleibt dynamisch.
 Die HTML-Oberfläche verwendet eine eigene, abgerundete Inline-SVG-Icon-Familie mit
 konsistenter Strichstärke und zurückhaltenden Farbflächen. Sie benötigt weder CDN,
 Icon-Font noch externe SVG- oder Rasterressourcen. Die reduzierten eInk-Icons und die
-gefreezte 800×480-Geometrie bleiben davon getrennt und unverändert.
+gefreezte 800×480-Geometrie bleiben davon getrennt und unverändert. Verbleibende
+Lucide-basierte beziehungsweise davon abgeleitete Pfade sind trotz Inline-Einbettung
+weiterhin in `web/THIRD_PARTY_NOTICES.md` unter der ISC-Lizenz ausgewiesen.

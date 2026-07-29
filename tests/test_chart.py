@@ -2,7 +2,7 @@ import unittest
 from datetime import date, datetime, timezone
 
 from dashboard.chart import (
-    PLOT_BOTTOM, PLOT_LEFT, PLOT_RIGHT, PLOT_TOP,
+    PLOT_BOTTOM, PLOT_LEFT, PLOT_RIGHT, PLOT_TOP, POWER_MAX_KW,
     battery_y, build_chart, power_y, x_for_local_time,
 )
 from renderer.src.render import render_dashboard
@@ -21,6 +21,9 @@ def aggregate(timestamp, solar=4.0, house=2.0, soc=60.0, battery=True):
 class DailyChartTest(unittest.TestCase):
     day = date(2026, 7, 25)
     now = datetime(2026, 7, 25, 14, 40, tzinfo=timezone.utc)
+
+    def test_eink_chart_scale_remains_24_kw(self):
+        self.assertEqual(POWER_MAX_KW, 24.0)
 
     def test_fixed_axis_scaling_and_clipping(self):
         midnight = datetime(2026, 7, 24, 22, 0, tzinfo=timezone.utc)

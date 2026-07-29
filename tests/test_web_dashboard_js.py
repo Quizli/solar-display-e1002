@@ -182,3 +182,19 @@ class NewDashboardViewModelTest(unittest.TestCase):
         self.assertIn("SOLAR_PROGRESS_MAX_KW = 18.0", source)
         self.assertIn("payload.live.heat_power_kw >= 0.05", source)
         self.assertNotIn("SOLAR_CAPACITY_KWP", source)
+
+    def test_heat_arrow_threshold_uses_raw_numeric_value_and_availability(self):
+        payload = json.dumps(PAYLOAD, ensure_ascii=False)
+        result = run_js(JS_BOOT + f"const good={payload};" + r'''
+const cases=[null,0,0.049,0.05,2.6].map(value=>{const p=clone(good);p.live.heat_power_kw=value;return api.buildViewModel(p).directions.heat});
+const missing=clone(good);missing.status.components.heat="missing";missing.live.heat_power_kw=2.6;
+process.stdout.write(JSON.stringify({cases,missing:api.buildViewModel(missing).directions.heat}));''')
+        self.assertEqual(result["cases"], ["idle", "idle", "idle", "active", "active"])
+        self.assertEqual(result["missing"], "idle")
+
+    def test_progress_segments_and_uncapped_display_value(self):
+        payload = json.dumps(PAYLOAD, ensure_ascii=False)
+        result = run_js(JS_BOOT + f"const good={payload};" + r'''
+const values=[0,9,18,22].map(value=>{const p=clone(good);p.live.solar_power_kw=value;const view=api.buildViewModel(p);return [view.segments.solar,view.fields["live.solar_power_kw"]]});
+process.stdout.write(JSON.stringify(values));''')
+        self.assertEqual(result, [[0, "0.0"], [10, "9.0"], [20, "18.0"], [20, "22.0"]])

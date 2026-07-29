@@ -205,7 +205,7 @@ process.stdout.write(JSON.stringify({
             payload["chart"]["series"][0]["battery_state_of_charge_percent"])
         json.dumps(payload, allow_nan=False)
 
-    def test_normal_insight_and_independent_historical_comparison_coexist(self):
+    def test_incomplete_history_does_not_create_comparison_or_record(self):
         self.snapshot()
         self.aggregate(5)
         local_hour = self.now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
@@ -221,7 +221,7 @@ process.stdout.write(JSON.stringify({
 
         payload, _ = self.payload()
         comparison = payload["historical_comparison"]
-        self.assertEqual(payload["insight"]["fact_id"], "HIST_RECORD")
+        self.assertEqual(payload["insight"]["fact_id"], fact.fact_id)
         self.assertIsNone(comparison)
 
 
