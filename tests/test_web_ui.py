@@ -45,7 +45,6 @@ class WebDashboardShellTests(unittest.TestCase):
 
     def test_production_assets_exist_and_html_parses(self):
         self.assertTrue(CSS.is_file())
-        self.assertTrue(ICONS.is_file())
         self.assertTrue(JAVASCRIPT.is_file())
         self.assertIn("<!doctype html>", self.source.lower())
         self.assertIn("</html>", self.source.lower())
@@ -133,7 +132,8 @@ class WebDashboardShellTests(unittest.TestCase):
     def test_direction_indicators_use_explicit_direction_states(self):
         css = CSS.read_text(encoding="utf-8")
         for icon in ("arrow-down", "arrow-up", "trend-up", "trend-down", "move-right"):
-            self.assertIn("icons.svg#" + icon, self.source)
+            self.assertIn('id="' + icon + '"', self.source)
+            self.assertIn('href="#' + icon + '"', self.source)
         for direction in ("charging", "discharging", "importing", "exporting",
                           "higher", "lower", "similar"):
             self.assertIn("data-direction=" + direction, css)

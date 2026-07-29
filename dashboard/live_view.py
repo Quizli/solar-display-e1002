@@ -124,6 +124,26 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
         return initial
 
     key = hour_key(current_hour)
+    pinned_records = [item for item in eligible_historical_candidates(database, context)
+                      if item.fact_id == "HIST_RECORD"]
+    if pinned_records:
+        current = next((item for item in pinned_records
+                        if item.context.get("period") == "today"), None)
+        rendered = render_historical(
+            "HIST_RECORD", context, (current or pinned_records[0]).context)
+        if rendered:
+            candidate = current or pinned_records[0]
+            database.store_fact_selection(
+                key, current_hour, "HIST_RECORD", "history",
+                context.selection_energy_kwh,
+                context.selection_bucket_by_hour.get(key),
+                context_json=candidate.context_json)
+            return Story(**{**rendered.__dict__,
+                            "selection_energy_kwh": context.selection_energy_kwh,
+                            "selection_bucket_start": context.selection_bucket_by_hour.get(
+                                hour_key(current_hour)),
+                            "selection_source": "pinned_record"})
+
     previous = database.latest_fact_selection_before(current_hour)
     previous_energy = (previous.selection_energy_kwh if previous else
                        anchors.get(hour_key(previous_hour)))
@@ -227,8 +247,29 @@ def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
                                       item[0].family != previous.family)]
     unused_today = [item for item in candidates
                     if item[0].fact_id not in used_today]
-    fact = (unused_both_other_family or unused_both or
-            unused_today_other_family or unused_today or candidates)[0][0]
+    recent = database.recent_catalog_fact_selections(tuple(FACTS_BY_ID), 12)
+    recent_ids = {item.fact_id for item in recent}
+    previous_catalog = recent[0] if recent else None
+    def other_family(item):
+        return previous_catalog is None or item[0].family != previous_catalog.family
+    stages = (
+        [item for item in candidates if item[0].fact_id not in used_today
+         and item[0].fact_id not in recent_ids and other_family(item)],
+        [item for item in candidates if item[0].fact_id not in used_today
+         and item[0].fact_id not in recent_ids],
+        [item for item in candidates if item[0].fact_id not in used_today
+         and other_family(item)],
+        [item for item in candidates if item[0].fact_id not in used_today],
+    )
+    selected_stage = next((stage for stage in stages if stage), None)
+    if selected_stage:
+        fact = next((item[0] for item in selected_stage
+                     if item[0].fact_id not in used_yesterday), selected_stage[0][0])
+    else:
+        all_history = database.recent_catalog_fact_selections(tuple(FACTS_BY_ID), 100000)
+        rank = {item.fact_id: index for index, item in enumerate(all_history)}
+        pool = [item for item in candidates if other_family(item)] or candidates
+        fact = max(pool, key=lambda item: rank.get(item[0].fact_id, len(rank) + 1))[0]
     record = database.store_fact_selection(
         key, current_hour, fact.fact_id, fact.family, selection_energy,
         initial.selection_bucket_start)

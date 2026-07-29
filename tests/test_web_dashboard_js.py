@@ -175,3 +175,10 @@ process.stdout.write(JSON.stringify({emptyComparisonView,axisLayouts,formats:[ap
 
 if __name__ == "__main__":
     unittest.main()
+
+class NewDashboardViewModelTest(unittest.TestCase):
+    def test_progress_constant_and_heat_threshold_are_typed(self):
+        source = (Path(__file__).parents[1] / "web/assets/dashboard.js").read_text()
+        self.assertIn("SOLAR_PROGRESS_MAX_KW = 18.0", source)
+        self.assertIn("payload.live.heat_power_kw >= 0.05", source)
+        self.assertNotIn("SOLAR_CAPACITY_KWP", source)

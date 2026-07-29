@@ -233,6 +233,18 @@ class SolarDatabase:
                   datetime.fromisoformat(item["local_hour"]).astimezone(UTC))
         return self._fact_selection(row)
 
+    def recent_catalog_fact_selections(self, fact_ids, limit: int = 12):
+        """Return latest actually persisted catalogue selections, newest first."""
+        if limit <= 0 or not fact_ids:
+            return []
+        placeholders = ",".join("?" for _ in fact_ids)
+        rows = self.connection.execute(
+            f"""SELECT * FROM fact_history WHERE fact_id IN ({placeholders})
+                ORDER BY created_at_utc DESC, local_hour DESC, dst_fold DESC LIMIT ?""",
+            (*fact_ids, limit),
+        ).fetchall()
+        return [self._fact_selection(row) for row in rows]
+
     def store_snapshot(self, snapshot: LiveData) -> bool:
         timestamp = _aware_utc(snapshot.timestamp)
         values = [getattr(snapshot, field) for field in POWER_FIELDS]

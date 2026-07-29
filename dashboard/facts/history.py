@@ -42,6 +42,23 @@ def eligible_historical_candidates(database, context):
             result.append(HistoricalCandidate("HIST_RECORD", {
                 "reference_day": record_day.isoformat(),
                 "baseline_energy_kwh": prior_record,
+                "period": "today",
+            }))
+
+    yesterday = today - timedelta(days=1)
+    yesterday_yield = _yield(database, yesterday)
+    older = database.completed_daily_yields(yesterday)
+    if yesterday_yield is not None and len(older) >= 2:
+        prior_record = max(item.energy_kwh for item in older)
+        if yesterday_yield > prior_record + MINIMUM_KWH:
+            record_day = max(item.local_day for item in older
+                             if item.energy_kwh == prior_record)
+            result.append(HistoricalCandidate("HIST_RECORD", {
+                "reference_day": yesterday.isoformat(),
+                "previous_record_day": record_day.isoformat(),
+                "baseline_energy_kwh": prior_record,
+                "comparison_energy_kwh": yesterday_yield,
+                "period": "yesterday",
             }))
 
     selected_day = None
@@ -98,11 +115,16 @@ def render_historical(fact_id, context, payload) -> Optional[Story]:
         if baseline < MINIMUM_KWH:
             return None
         if fact_id == "HIST_RECORD":
-            value = context.today_energy_kwh
-            if value is None:
-                return None
-            lines = (f"Heute sind bereits {format_fact_number(value, 'energy')} kWh Solarstrom entstanden.",
-                     f"Der bisherige Rekord lag bei {format_fact_number(baseline, 'energy')} kWh.")
+            if payload.get("period") == "yesterday":
+                value = float(payload["comparison_energy_kwh"])
+                lines = (f"Gestern entstanden {format_fact_number(value, 'energy')} kWh Solarstrom.",
+                         "Neuer Tagesrekord seit Beginn der Aufzeichnung.")
+            else:
+                value = context.today_energy_kwh
+                if value is None:
+                    return None
+                lines = (f"Heute sind bereits {format_fact_number(value, 'energy')} kWh Solarstrom entstanden.",
+                         f"Der bisherige Rekord lag bei {format_fact_number(baseline, 'energy')} kWh.")
         else:
             value = float(payload["comparison_energy_kwh"])
             morning = payload.get("period") == "yesterday"

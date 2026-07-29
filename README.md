@@ -350,8 +350,7 @@ vier Segmenten im 2×2-Raster gruppiert. Ab 700 px stehen Hero-Karten sowie
 Tagesverlauf und Insight nebeneinander. Ab 1050 px wird der Tagesverlauf zur
 grossen Desktop-Hauptfläche, während Bilanz und Insight den Seitenbereich
 bilden. Safe-Area-Inset, ein 320-px-Fallback und eine undurchsichtige
-`backdrop-filter`-Fallbackfläche sind enthalten. Die verwendeten Lucide-Symbole
-und ihre ISC-Lizenz sind in `web/THIRD_PARTY_NOTICES.md` dokumentiert.
+`backdrop-filter`-Fallbackfläche sind enthalten. Die HTML-Symbole sind als lokale Inline-SVG-Familie ohne externe Abhängigkeit eingebettet.
 
 ### Docker-Build-Kontext und Dateirechte
 
@@ -380,3 +379,32 @@ publizierte `dashboard.svg` erhält bewusst den Modus `0644`, damit der separate
 Nginx-Service die Datei lesen kann. Das Verzeichnis `publish/` muss für Nginx
 außerdem mindestens durchsuchbar sein; globale Schreibrechte wie `0666` oder
 `0777` sind weder notwendig noch vorgesehen.
+
+## Rekorde, Facts und Anzeige-Skalierung
+
+Ein Tagesrekord ist der höchste gültige Ertrag unter den vollständig abgeschlossenen,
+aggregatebasierten Aufzeichnungstagen. Ein laufender Tag benötigt mindestens zwei
+frühere abgeschlossene Tage und muss den bisherigen Höchstwert um mehr als 0,1 kWh
+übertreffen. Die Aussage lautet bewusst «seit Beginn der Aufzeichnung», nicht
+«Anlagenrekord». Nach der Überschreitung hat der Rekord am laufenden lokalen Tag
+Priorität und wird mit dem steigenden Tageswert aktualisiert; nach Mitternacht bleibt
+der endgültige Rekord des Vortags noch den ganzen Folgetag angeheftet. Fehlende oder
+veraltete Betriebsdaten bleiben höher priorisiert. Danach folgen andere historische
+Vergleiche, Katalog-Facts und technische Rückfälle.
+
+Reguläre Katalog-Facts rotieren unabhängig davon. Die Auswahl vermeidet zuerst heute
+verwendete Facts, die letzten zwölf tatsächlich angezeigten Katalog-Facts und die
+vorherige Familie; gestern gezeigte Motive werden innerhalb derselben Stufe
+zurückgestellt. Ist der Pool erschöpft, erscheint der am längsten nicht gezeigte
+geeignete Fact statt eines technischen Textes. Status- und historische Meldungen
+zählen nicht zum Zwölfer-Gedächtnis.
+
+`SOLAR_PROGRESS_MAX_KW = 18.0` kalibriert ausschliesslich die 20 Segmente der
+Solar-Progressbars in HTML und eInk. Die installierte Leistung bleibt 21,78 kWp;
+Messwerte werden nicht begrenzt. Die feste eInk-Chartskala bleibt 24 kW und das
+HTML-Chart bleibt dynamisch.
+
+Die HTML-Oberfläche verwendet eine eigene, abgerundete Inline-SVG-Icon-Familie mit
+konsistenter Strichstärke und zurückhaltenden Farbflächen. Sie benötigt weder CDN,
+Icon-Font noch externe SVG- oder Rasterressourcen. Die reduzierten eInk-Icons und die
+gefreezte 800×480-Geometrie bleiben davon getrennt und unverändert.

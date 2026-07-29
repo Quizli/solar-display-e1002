@@ -221,16 +221,9 @@ process.stdout.write(JSON.stringify({
 
         payload, _ = self.payload()
         comparison = payload["historical_comparison"]
-        self.assertEqual(payload["insight"]["fact_id"], fact.fact_id)
-        self.assertNotEqual(payload["insight"]["fact_id"], comparison["type"])
-        self.assertEqual(comparison["direction"], "higher")
-        self.assertEqual(comparison["difference_percent"], 20)
-        self.assertEqual(comparison["comparison_value_kwh"], 12)
-        self.assertEqual(comparison["baseline_kwh"], 10)
-        self.assertEqual(comparison["reference_day"], "2026-07-24")
-        self.assertEqual(comparison["reference_period"], "today")
-        self.assertNotEqual(comparison["statement"], " ".join(
-            (payload["insight"]["line_1"], payload["insight"]["line_2"])))
+        self.assertEqual(payload["insight"]["fact_id"], "HIST_RECORD")
+        self.assertIsNone(comparison)
+
 
     def test_historical_insight_is_not_duplicated_by_comparison(self):
         self.snapshot()

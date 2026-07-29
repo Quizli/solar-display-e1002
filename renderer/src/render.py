@@ -12,7 +12,8 @@ YELLOW = "#FFD400"
 RED = "#E02020"
 GREEN = "#149B24"
 BLUE = "#0057B8"
-SOLAR_MAX_KW = 20.0
+# Visual calibration for the segmented bar; readings and the 24 kW chart are uncapped.
+SOLAR_PROGRESS_MAX_KW = 18.0
 SEGMENT_COUNT = 20
 MISSING = "—"
 
@@ -144,7 +145,7 @@ def render_dashboard(data, template=None):
     else:
         grid_label, grid_arrow_svg, grid_display = "Netz", "", "0.0"
 
-    solar_segments = segment_count(solar_power or 0, SOLAR_MAX_KW)
+    solar_segments = segment_count(solar_power or 0, SOLAR_PROGRESS_MAX_KW)
     battery_segments = segment_count(battery_percent or 0, 100) if battery_available else 0
     pct = _number(data, "self_consumption_percent")
     values = {

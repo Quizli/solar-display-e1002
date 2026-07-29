@@ -261,3 +261,12 @@ class FactsEngineTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ExpandedCatalogTest(unittest.TestCase):
+    def test_catalog_size_and_required_energy_pools(self):
+        from dashboard.facts.catalog import FACTS
+        self.assertGreaterEqual(len(FACTS), 30)
+        required = {1: 10, 5: 15, 25: 22, 80: 22, 121: 16, 142.2: 16, 160: 16}
+        for energy, minimum in required.items():
+            with self.subTest(energy=energy):
+                self.assertGreaterEqual(sum(f.min_kwh <= energy <= f.max_kwh for f in FACTS), minimum)

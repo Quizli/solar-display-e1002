@@ -107,6 +107,35 @@ def render_cmb07(e, _p):
             f"Das AKW Gösgen benötigt rund {seconds} Sekunden.")
 
 
+# Approximate factors are deliberately rounded, broad-range comparisons:
+# energy per use in kWh (LED hour .01, laptop hour .05, bread .04,
+# soup serving .10, vacuum hour .8, sewing hour .07, fan hour .04,
+# microscope hour .03, museum display hour .2, cable-car passenger-km .1,
+# library workstation hour .06, radio hour .01, projector hour .25,
+# water pumping cubic metre .5).  They are explanatory equivalents, not
+# appliance guarantees.
+def _equivalent(e, p, factor, label):
+    energy, p = _energy_period(e, p)
+    return f"Die {p} {energy} kWh entsprechen ungefähr", \
+           f"{format_fact_number(e / factor)} {label}."
+
+
+def render_n01(e, p): return _equivalent(e, p, .01, "Stunden LED-Licht")
+def render_n02(e, p): return _equivalent(e, p, .05, "Stunden Laptoparbeit")
+def render_n03(e, p): return _equivalent(e, p, .04, "Scheiben Toast")
+def render_n04(e, p): return _equivalent(e, p, .10, "warmen Suppenportionen")
+def render_n05(e, p): return _equivalent(e, p, .8, "Stunden Staubsaugen")
+def render_n06(e, p): return _equivalent(e, p, .07, "Stunden Nähen")
+def render_n07(e, p): return _equivalent(e, p, .04, "Stunden Ventilatorbetrieb")
+def render_n08(e, p): return _equivalent(e, p, .03, "Stunden Mikroskopieren")
+def render_n09(e, p): return _equivalent(e, p, .2, "Stunden Museumsbeleuchtung")
+def render_n10(e, p): return _equivalent(e, p, .1, "Seilbahn-Personenkilometern")
+def render_n11(e, p): return _equivalent(e, p, .06, "Stunden Bibliotheks-PC")
+def render_n12(e, p): return _equivalent(e, p, .01, "Stunden Radioprogramm")
+def render_n13(e, p): return _equivalent(e, p, .25, "Stunden Filmprojektion")
+def render_n14(e, p): return _equivalent(e, p, .5, "Kubikmetern gepumptem Wasser")
+
+
 FACTS = (
     FactDefinition("D01", "digital", 1, 120, 1, render_d01),
     FactDefinition("D02", "digital", 5, 120, 1, render_d02),
@@ -126,6 +155,20 @@ FACTS = (
     FactDefinition("X03", "large_scale", 25, 160, 1, render_x03),
     FactDefinition("X11", "large_scale", 50, 160, 1, render_x11),
     FactDefinition("CMB07", "combined", 50, 160, 1, render_cmb07),
+    FactDefinition("N01", "lighting", 1, 160, 1, render_n01),
+    FactDefinition("N02", "digital_work", 1, 160, 1, render_n02),
+    FactDefinition("N03", "food", 1, 160, 1, render_n03),
+    FactDefinition("N04", "food", 1, 160, 1, render_n04),
+    FactDefinition("N05", "household", 1, 160, 1, render_n05),
+    FactDefinition("N06", "craft", 1, 160, 1, render_n06),
+    FactDefinition("N07", "comfort", 1, 160, 1, render_n07),
+    FactDefinition("N08", "science", 1, 160, 1, render_n08),
+    FactDefinition("N09", "culture", 1, 160, 1, render_n09),
+    FactDefinition("N10", "mobility", 1, 160, 1, render_n10),
+    FactDefinition("N11", "zurich", 1, 160, 1, render_n11),
+    FactDefinition("N12", "media", 1, 160, 1, render_n12),
+    FactDefinition("N13", "leisure", 1, 160, 1, render_n13),
+    FactDefinition("N14", "infrastructure", 1, 160, 1, render_n14),
 )
 
 FACTS_BY_ID = {fact.fact_id: fact for fact in FACTS}
