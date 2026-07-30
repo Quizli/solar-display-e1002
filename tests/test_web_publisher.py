@@ -5,15 +5,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from dashboard.live_view import build_live_view
 from dashboard.facts.catalog import FACTS
 from dashboard.facts.engine import hour_key
-from dashboard.facts.history import HistoricalCandidate
 from dashboard.publisher import publish_view
 from dashboard.web_publisher import build_web_payload, publish_web_payload
 from fronius.model import LiveData
@@ -33,13 +31,14 @@ class WebPublisherTest(unittest.TestCase):
         self.temporary.cleanup()
 
     def snapshot(self, age=0, battery=True, heat=True, solar=8, house=6,
-                 heat_power=2, battery_power=1.5, grid=-0.5, soc=72):
+                 heat_power=2, battery_power=1.5, grid=-0.5, soc=72,
+                 energy=12):
         timestamp = self.now - timedelta(seconds=age)
         self.database.store_snapshot(LiveData(
             timestamp=timestamp.isoformat(), solar_power_kw=solar, house_power_kw=house,
             heat_power_kw=heat_power if heat else 0, battery_soc_pct=soc,
             battery_power_kw=battery_power if battery else 0, grid_power_kw=grid,
-            energy_today_kwh=12, energy_total_kwh=112,
+            energy_today_kwh=energy, energy_total_kwh=100 + energy,
             battery_available=battery, heat_available=heat))
 
     def aggregate(self, minute=5, battery=True):
@@ -48,6 +47,20 @@ class WebPublisherTest(unittest.TestCase):
             "INSERT INTO aggregates_5m VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (_utc_text(start), 8, 6, 2, 72, 1.5, -0.5, 12, 4,
              int(battery), 1))
+        self.database.connection.commit()
+
+    def complete_day(self, local_day, energy):
+        start, end = self.database._local_day_bounds(local_day)
+        duration = (end - start).total_seconds()
+        rows = []
+        instant = start
+        while instant < end:
+            elapsed = (instant - start).total_seconds() + 300
+            rows.append((_utc_text(instant), 0, 0, 0, 50, 0, 0,
+                         energy * min(1, elapsed / duration), 1, 1, 1))
+            instant += timedelta(minutes=5)
+        self.database.connection.executemany(
+            "INSERT INTO aggregates_5m VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
         self.database.connection.commit()
 
     def payload(self, **view_kwargs):
@@ -225,47 +238,63 @@ process.stdout.write(JSON.stringify({
         self.assertIsNone(comparison)
 
 
-    def test_historical_insight_is_not_duplicated_by_comparison(self):
-        self.snapshot()
-        snapshot = self.database.latest_snapshot()
-        view = build_live_view(self.database, self.now, snapshot=snapshot)
-        view["story_status"]["fact_id"] = "HIST_RECORD"
-        view["display"]["story_line_1"] = "Aktueller Rekord."
-        view["display"]["story_line_2"] = "Bisheriger Rekord."
-        candidates = [
-            HistoricalCandidate("HIST_RECORD", {
-                "reference_day": "2026-07-24", "baseline_energy_kwh": 10,
-            }),
-            HistoricalCandidate("HIST_AVERAGE", {
-                "reference_day": "2026-07-25", "period": "today",
-                "comparison_energy_kwh": 12, "baseline_energy_kwh": 8,
-                "baseline_days": 4,
-            }),
-        ]
-
-        def rendered(fact_id, _context, _details):
-            lines = (("Aktueller Rekord.", "Bisheriger Rekord.")
-                     if fact_id == "HIST_RECORD" else
-                     ("Vergleich zum Schnitt.", "Heute liegt darüber."))
-            return SimpleNamespace(line_1=lines[0], line_2=lines[1])
-
-        view["_historical_candidates"] = candidates
-        with patch("dashboard.web_publisher.render_historical",
-                   side_effect=rendered):
-            payload = build_web_payload(
-                self.database, view, snapshot, self.now)
+    def test_active_today_record_keeps_real_average_comparison(self):
+        for day, energy in ((21, 10), (22, 20), (23, 30), (24, 40)):
+            self.complete_day(date(2026, 7, day), energy)
+        self.snapshot(energy=40.2)
+        payload, _ = self.payload()
 
         comparison = payload["historical_comparison"]
         insight_text = " ".join((payload["insight"]["line_1"],
                                  payload["insight"]["line_2"]))
         self.assertEqual(comparison["type"], "HIST_AVERAGE")
+        self.assertEqual(comparison["reference_day"], "2026-07-24")
+        self.assertEqual(comparison["baseline_days"], 3)
+        self.assertAlmostEqual(comparison["comparison_value_kwh"], 40)
+        self.assertAlmostEqual(comparison["baseline_kwh"], 20)
         self.assertNotEqual(comparison["type"], payload["insight"]["fact_id"])
         self.assertNotEqual(comparison["statement"], insight_text)
 
-        view["_historical_candidates"] = candidates[:1]
-        without_alternative = build_web_payload(
-            self.database, view, snapshot, self.now)
-        self.assertIsNone(without_alternative["historical_comparison"])
+    def test_yesterday_record_and_average_cover_entire_following_day(self):
+        for day, energy in ((21, 10), (22, 20), (23, 30), (24, 40)):
+            self.complete_day(date(2026, 7, day), energy)
+        for hour, minute in ((0, 5), (8, 0), (23, 55)):
+            with self.subTest(hour=hour, minute=minute):
+                self.now = datetime(2026, 7, 25, hour, minute, tzinfo=ZURICH)
+                self.snapshot(solar=0, energy=0)
+                payload, _ = self.payload()
+                comparison = payload["historical_comparison"]
+                self.assertEqual(payload["insight"]["fact_id"], "HIST_RECORD")
+                self.assertIn("Tagesrekord", payload["insight"]["line_2"])
+                self.assertEqual(comparison["type"], "HIST_AVERAGE")
+                self.assertEqual(comparison["reference_day"], "2026-07-24")
+                self.assertEqual(comparison["baseline_days"], 3)
+                self.assertAlmostEqual(comparison["comparison_value_kwh"], 40)
+                self.assertAlmostEqual(comparison["baseline_kwh"], 20)
+                self.assertNotIn("Rekord", comparison["statement"])
+
+        self.now = datetime(2026, 7, 26, 8, tzinfo=ZURICH)
+        self.snapshot(solar=0, energy=0)
+        payload, _ = self.payload()
+        self.assertNotEqual(payload["insight"]["fact_id"], "HIST_RECORD")
+
+    def test_average_payload_survives_database_restart_without_record(self):
+        for day, energy in ((21, 20), (22, 30), (23, 25), (24, 27)):
+            self.complete_day(date(2026, 7, day), energy)
+        self.snapshot(energy=10)
+        local_hour = self.now.astimezone(ZURICH).replace(
+            minute=0, second=0, microsecond=0)
+        fact = next(item for item in FACTS if item.min_kwh <= 10 <= item.max_kwh)
+        self.database.store_fact_selection(
+            hour_key(local_hour), local_hour, fact.fact_id, fact.family, 10)
+        before, _ = self.payload()
+        self.database.close()
+        self.database = SolarDatabase(str(self.directory / "solar.db"))
+        after, _ = self.payload()
+        self.assertNotEqual(before["insight"]["fact_id"], "HIST_RECORD")
+        self.assertEqual(before["historical_comparison"]["type"], "HIST_AVERAGE")
+        self.assertEqual(before["historical_comparison"],
+                         after["historical_comparison"])
 
     def test_publisher_reuses_candidates_from_single_live_view_build(self):
         self.snapshot()
@@ -279,6 +308,39 @@ process.stdout.write(JSON.stringify({
             build_web_payload(self.database, view, snapshot, self.now)
         self.assertEqual(live_candidates.call_count, 1)
         self.assertEqual(web_candidates.call_count, 0)
+
+    def test_full_payload_query_count_is_constant_for_30_and_300_days(self):
+        from dashboard.facts.history import eligible_historical_candidates
+        measurements = []
+        for days in (30, 300):
+            self.database.close()
+            self.database = SolarDatabase(
+                str(self.directory / f"query-{days}.db"))
+            base = date(2025, 1, 1)
+            for offset in range(days):
+                self.complete_day(base + timedelta(days=offset),
+                                  10 + offset % 5)
+            self.now = datetime.combine(base + timedelta(days=days),
+                                        datetime.min.time(),
+                                        tzinfo=ZURICH).replace(hour=12)
+            self.snapshot(energy=15.2)
+            statements = []
+            self.database.connection.set_trace_callback(
+                lambda sql: statements.append(sql) if
+                sql.lstrip().upper().startswith("SELECT") else None)
+            with patch("dashboard.live_view.eligible_historical_candidates",
+                       wraps=eligible_historical_candidates) as candidates:
+                snapshot = self.database.latest_snapshot()
+                view = build_live_view(self.database, self.now, snapshot=snapshot)
+                payload = build_web_payload(
+                    self.database, view, snapshot, self.now)
+            self.database.connection.set_trace_callback(None)
+            aggregate_selects = [sql for sql in statements
+                                 if "AGGREGATES_5M" in sql.upper()]
+            self.assertIsNotNone(payload["historical_comparison"])
+            self.assertEqual(candidates.call_count, 1)
+            measurements.append((len(statements), len(aggregate_selects)))
+        self.assertEqual(measurements, [(20, 9), (20, 9)])
 
     def test_atomic_write_permissions_privacy_and_svg_regression(self):
         self.snapshot()

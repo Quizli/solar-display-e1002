@@ -42,7 +42,13 @@ def _historical(database, now, day_yield, solar_power, sun,
     context = build_fact_context(database, now, day_yield, solar_power, sun)
     if candidates is None:
         candidates = eligible_historical_candidates(database, context)
-    for candidate in candidates:
+    # The average is the tile's canonical non-record statement.  Even when it
+    # covers the record day, it only compares production with an average and
+    # cannot claim a record by construction.  Suppressing HIST_RECORD below is
+    # therefore the semantic redundancy rule; text inequality alone is not.
+    # Keep other non-record candidates as fallbacks for older persisted views.
+    ordered = sorted(candidates, key=lambda item: item.fact_id != "HIST_AVERAGE")
+    for candidate in ordered:
         if candidate.fact_id == insight_fact_id:
             continue
         details = candidate.context

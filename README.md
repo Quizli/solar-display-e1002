@@ -281,10 +281,20 @@ Fact wie das eInk-Dashboard. `historical_comparison` wird unabhängig davon aus
 der bestehenden History-Logik ermittelt und ist entweder `null` oder trennt Typ,
 Aussage, Bezugszeitraum, Vergleichs- und Basiswert, prozentuale Differenz und
 Richtung (`higher`, `lower`, `similar`). Vergleichstag und Anzahl Basistage
-bleiben, soweit vorhanden, als eigene Felder erhalten. Ist ein historischer Fact
-bereits das aktuelle `insight`, wird für `historical_comparison` der nächste
-inhaltlich unterschiedliche Kandidat verwendet; ohne Alternative ist der Wert
-`null`, statt dieselbe Aussage doppelt zu publizieren.
+bleiben, soweit vorhanden, als eigene Felder erhalten. Standardmässig vergleicht
+die Kachel den jüngsten gemäss 95-%-Regel vollständigen Zürcher Kalendertag mit
+dem Mittel der zwei bis sieben jüngsten vollständigen Tage davor. Der
+Vergleichstag ist nie Teil dieses Mittels; Lücken werden übersprungen. Ein
+gleichzeitig aktiver Rekord-Fact bleibt als `insight` sichtbar, während die
+Kachel diesen nicht wiederholt. Fehlen zwei qualifizierte Referenztage oder ist
+deren Mittel null, bleibt `historical_comparison` kontrolliert `null`.
+Ein Durchschnittsvergleich über denselben Tag wie ein Rekord ist nicht
+redundant: Er setzt den Tagesertrag ausschliesslich zum Mittelwert ins
+Verhältnis und behauptet weder einen Rekord noch eine Überschreitung des alten
+Rekords. Rekordkandidaten werden bei aktivem Rekord-Insight semantisch anhand
+ihres Typs unterdrückt; blosse Textungleichheit gilt nicht als
+Redundanznachweis. Da `HIST_AVERAGE` konstruktiv keine Rekordaussage erzeugen
+kann, ist kein Ausweichen auf einen älteren Vergleichstag erforderlich.
 
 Der JSON-Takt beträgt standardmässig 15 Sekunden
 (`DASHBOARD_JSON_REFRESH_SECONDS`), passend zum 10-Sekunden-Collector. Der

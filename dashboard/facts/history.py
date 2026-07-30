@@ -68,6 +68,25 @@ def eligible_historical_candidates(database, context):
                 "period": "yesterday",
             }))
 
+    # The dashboard comparison has a different purpose from the record story:
+    # compare the newest fully qualified day with up to seven qualified days
+    # before it.  Reuse the record query above so qualification (including DST
+    # day length and 95% coverage) is identical and publishing stays O(1) in
+    # database queries.
+    if earlier:
+        comparison = earlier[-1]
+        baselines = earlier[:-1][-7:]
+        if len(baselines) >= 2:
+            average = sum(item.energy_kwh for item in baselines) / len(baselines)
+            if average > 0:
+                result.append(HistoricalCandidate("HIST_AVERAGE", {
+                    "reference_day": comparison.local_day.isoformat(),
+                    "period": "yesterday" if comparison.local_day == yesterday else "historical",
+                    "comparison_energy_kwh": comparison.energy_kwh,
+                    "baseline_energy_kwh": average,
+                    "baseline_days": len(baselines),
+                }))
+
     selected_day = None
     label = None
     if phase == "after_sunset":
@@ -87,15 +106,6 @@ def eligible_historical_candidates(database, context):
             "comparison_energy_kwh": selected,
             "baseline_energy_kwh": previous,
         }))
-    baselines = database.completed_daily_yields(selected_day, limit=7)
-    if selected is not None and selected >= MINIMUM_KWH and len(baselines) >= 3:
-        average = sum(item.energy_kwh for item in baselines) / len(baselines)
-        if average >= MINIMUM_KWH:
-            result.append(HistoricalCandidate("HIST_AVERAGE", {
-                "reference_day": selected_day.isoformat(), "period": label,
-                "comparison_energy_kwh": selected,
-                "baseline_energy_kwh": average, "baseline_days": len(baselines),
-            }))
     return result
 
 
@@ -143,10 +153,16 @@ def render_historical(fact_id, context, payload) -> Optional[Story]:
                                           "Das ist fast gleich viel wie gestern.",
                                           "als am Vortag" if morning else "als gestern"))
             elif fact_id == "HIST_AVERAGE":
-                lines = (f"Der letzte Solartag brachte {format_fact_number(value, 'energy')} kWh.",
-                         _comparison_line(value, baseline,
-                                          "Das liegt fast genau im bisherigen Schnitt.",
-                                          "als im Schnitt"))
+                days = int(payload["baseline_days"])
+                difference, direction = historical_difference(value, baseline)
+                day_label = "Gestern" if payload.get("period") == "yesterday" else "Am Vergleichstag"
+                if direction == "similar":
+                    lines = (f"{day_label} entsprach die Produktion ungefähr dem Durchschnitt",
+                             f"der vorherigen {days} vollständigen Tage.")
+                else:
+                    relation = "über" if direction == "higher" else "unter"
+                    lines = (f"{day_label} lag die Produktion {round(abs(difference))} % {relation} dem Durchschnitt",
+                             f"der vorherigen {days} vollständigen Tage.")
             else:
                 return None
         if not both_lines_fit(lines, 510):
