@@ -42,7 +42,10 @@ def _historical(database, now, day_yield, solar_power, sun,
     context = build_fact_context(database, now, day_yield, solar_power, sun)
     if candidates is None:
         candidates = eligible_historical_candidates(database, context)
-    for candidate in candidates:
+    # The average is the comparison tile's canonical, non-record statement.
+    # Keep all other candidates as fallbacks for older persisted views.
+    ordered = sorted(candidates, key=lambda item: item.fact_id != "HIST_AVERAGE")
+    for candidate in ordered:
         if candidate.fact_id == insight_fact_id:
             continue
         details = candidate.context

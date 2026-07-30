@@ -225,7 +225,7 @@ process.stdout.write(JSON.stringify({
         self.assertIsNone(comparison)
 
 
-    def test_historical_insight_is_not_duplicated_by_comparison(self):
+    def test_active_today_record_keeps_non_redundant_average_comparison(self):
         self.snapshot()
         snapshot = self.database.latest_snapshot()
         view = build_live_view(self.database, self.now, snapshot=snapshot)
@@ -259,6 +259,9 @@ process.stdout.write(JSON.stringify({
         insight_text = " ".join((payload["insight"]["line_1"],
                                  payload["insight"]["line_2"]))
         self.assertEqual(comparison["type"], "HIST_AVERAGE")
+        self.assertEqual(comparison["baseline_days"], 4)
+        self.assertEqual(comparison["comparison_value_kwh"], 12)
+        self.assertEqual(comparison["baseline_kwh"], 8)
         self.assertNotEqual(comparison["type"], payload["insight"]["fact_id"])
         self.assertNotEqual(comparison["statement"], insight_text)
 

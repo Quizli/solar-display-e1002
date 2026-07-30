@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from dashboard.facts import hour_key
 from dashboard.facts.history import (eligible_historical_candidates,
+                                     historical_difference,
                                      render_historical)
 from dashboard.facts.models import FactContext
 from dashboard.live_view import build_story
@@ -64,14 +65,49 @@ class HistoricalFactsTest(unittest.TestCase):
         self.assertIn("Vortag", story.line_2)
         self.assertNotIn("HIST_YESTERDAY", self.ids(FakeDatabase(values), context()))
 
-    def test_average_needs_three_and_uses_only_latest_seven_nonmissing_days(self):
+    def test_average_compares_latest_complete_day_with_previous_seven(self):
         values = {date(2026, 7, day): float(day) for day in (10, 12, 14, 16, 18, 20, 22, 24)}
         candidate = self.ids(FakeDatabase(values), context(hour=22, today=30))["HIST_AVERAGE"]
+        self.assertEqual(candidate.context["reference_day"], "2026-07-24")
+        self.assertEqual(candidate.context["comparison_energy_kwh"], 24)
         self.assertEqual(candidate.context["baseline_days"], 7)
         self.assertAlmostEqual(candidate.context["baseline_energy_kwh"],
-                               sum((12, 14, 16, 18, 20, 22, 24)) / 7)
+                               sum((10, 12, 14, 16, 18, 20, 22)) / 7)
         too_few = FakeDatabase({date(2026, 7, 23): 20, date(2026, 7, 24): 30})
         self.assertNotIn("HIST_AVERAGE", self.ids(too_few, context(hour=22)))
+
+    def test_average_uses_every_available_reference_from_two_to_six(self):
+        for count in (2, 6):
+            values = {date(2026, 7, day): float(day)
+                      for day in range(24 - count, 25)}
+            candidate = self.ids(FakeDatabase(values), context())["HIST_AVERAGE"]
+            references = list(range(24 - count, 24))
+            self.assertEqual(candidate.context["baseline_days"], count)
+            self.assertAlmostEqual(candidate.context["baseline_energy_kwh"],
+                                   sum(references) / count)
+
+    def test_average_skips_missing_days_and_rejects_zero_baseline(self):
+        values = {date(2026, 7, 10): 10, date(2026, 7, 18): 20,
+                  date(2026, 7, 24): 30}
+        candidate = self.ids(FakeDatabase(values), context())["HIST_AVERAGE"]
+        self.assertEqual(candidate.context["baseline_days"], 2)
+        self.assertEqual(candidate.context["baseline_energy_kwh"], 15)
+        zero = FakeDatabase({date(2026, 7, 20): 0, date(2026, 7, 21): 0,
+                             date(2026, 7, 24): 10})
+        self.assertNotIn("HIST_AVERAGE", self.ids(zero, context()))
+
+    def test_average_wording_covers_higher_lower_and_similar(self):
+        for value, fragment, direction in ((60, "über", "higher"),
+                                           (40, "unter", "lower"),
+                                           (51, "ungefähr", "similar")):
+            database = FakeDatabase({date(2026, 7, 22): 50,
+                                     date(2026, 7, 23): 50,
+                                     date(2026, 7, 24): value})
+            candidate = self.ids(database, context())["HIST_AVERAGE"]
+            story = render_historical(candidate.fact_id, context(), candidate.context)
+            self.assertIsNotNone(story)
+            self.assertIn(fragment, " ".join((story.line_1, story.line_2)))
+            self.assertEqual(historical_difference(value, 50)[1], direction)
 
 
 class HistoricalStorageTest(unittest.TestCase):
