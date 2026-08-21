@@ -208,6 +208,7 @@ class WebDashboardShellTests(unittest.TestCase):
     def test_chart_legend_declares_power_and_battery_units(self):
         self.assertIn('<li class="solar-key">Solar (kW)</li>', self.source)
         self.assertIn('<li class="house-key">Haus (kW)</li>', self.source)
+        self.assertIn('<li class="grid-import-key">Netzbezug (kW)</li>', self.source)
         self.assertIn('<li class="battery-key">Batterie (%)</li>', self.source)
 
     def test_insight_contract_fields_have_distinct_elements(self):

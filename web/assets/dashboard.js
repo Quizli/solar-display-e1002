@@ -64,7 +64,8 @@
   function validChartRow(row) {
     return record(row) && isoInstant(row.start_at) && isoInstant(row.end_at) &&
       validInstant(row.end_at).getTime() > validInstant(row.start_at).getTime() && nullableNumber(row.solar_power_kw) &&
-      nullableNumber(row.house_consumption_kw) && nullableNumber(row.battery_power_kw) &&
+      nullableNumber(row.house_consumption_kw) && (row.grid_import_kw === undefined ||
+       (nullableNumber(row.grid_import_kw) && (row.grid_import_kw === null || row.grid_import_kw >= 0))) && nullableNumber(row.battery_power_kw) &&
       nullableNumber(row.battery_state_of_charge_percent) &&
       (row.battery_state_of_charge_percent === null ||
        (row.battery_state_of_charge_percent >= 0 && row.battery_state_of_charge_percent <= 100)) &&
@@ -87,9 +88,9 @@
   function chartModel(series) {
     const points = series.map(row => {
       const date = validInstant(row.start_at); const parts = chartTimeFormat.formatToParts(date); const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
-      return { minute: Number(values.hour) * 60 + Number(values.minute), time: date.getTime(), solar: row.solar_power_kw, house: row.house_consumption_kw, battery: row.battery_state_of_charge_percent };
+      return { minute: Number(values.hour) * 60 + Number(values.minute), time: date.getTime(), solar: row.solar_power_kw, house: row.house_consumption_kw, gridImport: finite(row.grid_import_kw) && row.grid_import_kw > 0 ? row.grid_import_kw : null, battery: row.battery_state_of_charge_percent };
     }).sort((a, b) => a.time - b.time);
-    const values = [0]; points.forEach(point => [point.solar, point.house].forEach(value => { if (finite(value)) values.push(value); }));
+    const values = [0]; points.forEach(point => [point.solar, point.house, point.gridImport].forEach(value => { if (finite(value)) values.push(value); }));
     const maximum = Math.max(...values, 1), minimum = Math.min(...values, 0); const raw = Math.max(maximum - minimum, 1); const step = Math.pow(10, Math.floor(Math.log10(raw))) / 2;
     return { points, top: Math.ceil(maximum / step) * step, bottom: Math.floor(minimum / step) * step };
   }
@@ -144,7 +145,7 @@
   }
   function renderChart(container, model) {
     container.replaceChildren();
-    if (!model.points.some(point => finite(point.solar) || finite(point.house) || finite(point.battery))) { const message = document.createElement("span"); message.textContent = "Tagesverlauf nicht verfügbar"; container.appendChild(message); container.setAttribute("aria-label", message.textContent); return; }
+    if (!model.points.some(point => finite(point.solar) || finite(point.house) || finite(point.gridImport) || finite(point.battery))) { const message = document.createElement("span"); message.textContent = "Tagesverlauf nicht verfügbar"; container.appendChild(message); container.setAttribute("aria-label", message.textContent); return; }
     const NS = "http://www.w3.org/2000/svg", geometry = chartLayout(container, model), { width, height, left, right, top, bottom } = geometry;
     const svg = document.createElementNS(NS, "svg"); svg.setAttribute("viewBox", `0 0 ${width} ${height}`); svg.setAttribute("preserveAspectRatio", "xMidYMid meet"); svg.setAttribute("aria-hidden", "true");
     const x = minute => left + minute / 1440 * (width - left - right);
@@ -158,8 +159,8 @@
     });
     chartTimeTicks(width).forEach(minute => add("text", { x: x(minute), y: height - 7, "text-anchor": minute === 0 ? "start" : minute === 1440 ? "end" : "middle", class: "chart-axis" }, `${String(minute / 60).padStart(2, "0")}:00`));
     pathSequences(model, "solar", x, y).forEach(sequence => { if (sequence.length > 1) add("path", { d: `M${sequence.map(pair => pair.join(",")).join(" L")} L${sequence.at(-1)[0]},${y(0)} L${sequence[0][0]},${y(0)} Z`, class: "chart-area-solar" }); });
-    [["solar", "chart-line-solar", y], ["house", "chart-line-house", y], ["battery", "chart-line-battery", batteryY]].forEach(([key, css, scale]) => pathSequences(model, key, x, scale).forEach(sequence => { if (sequence.length === 1) add("circle", { cx: sequence[0][0], cy: sequence[0][1], r: 2.5, class: `chart-line ${css}` }); else add("path", { d: `M${sequence.map(pair => pair.join(",")).join(" L")}`, class: `chart-line ${css}` }); }));
-    container.appendChild(svg); container.setAttribute("aria-label", "Tagesverlauf für Solarleistung, Hausverbrauch und Batteriestand");
+    [["solar", "chart-line-solar", y], ["house", "chart-line-house", y], ["gridImport", "chart-line-grid-import", y], ["battery", "chart-line-battery", batteryY]].forEach(([key, css, scale]) => pathSequences(model, key, x, scale).forEach(sequence => { if (sequence.length === 1) add("circle", { cx: sequence[0][0], cy: sequence[0][1], r: 2.5, class: `chart-line ${css}` }); else add("path", { d: `M${sequence.map(pair => pair.join(",")).join(" L")}`, class: `chart-line ${css}` }); }));
+    container.appendChild(svg); container.setAttribute("aria-label", "Tagesverlauf für Solarleistung, Hausverbrauch, Netzbezug und Batteriestand");
   }
   function applyViewModel(root, view) {
     Object.entries(view.fields).forEach(([path, value]) => { const node = root.querySelector(`[data-field="${path}"]`); node.textContent = value; });

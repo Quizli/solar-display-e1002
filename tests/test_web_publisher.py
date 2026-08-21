@@ -88,6 +88,7 @@ class WebPublisherTest(unittest.TestCase):
         self.assertEqual(payload["live"]["grid_flow"]["magnitude_kw"], .5)
         self.assertEqual(len(payload["chart"]["series"]), 2)
         self.assertEqual(payload["chart"]["series"][0]["sample_count"], 4)
+        self.assertEqual(payload["chart"]["series"][0]["grid_import_kw"], 0)
         self.assertEqual(
             payload["chart"]["series"][0]["battery_state_of_charge_percent"], 72)
         self.assertIn("fact_id", payload["insight"])

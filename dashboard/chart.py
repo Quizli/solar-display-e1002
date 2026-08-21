@@ -22,10 +22,12 @@ class ChartPaths:
     solar_area: str
     solar_line: str
     house_line: str
+    grid_import_line: str
     battery_line: str
     battery_available: bool
     solar_points: int
     house_points: int
+    grid_import_points: int
     battery_points: int
     latest_timestamp: Optional[str]
 
@@ -97,6 +99,7 @@ def build_chart(rows: Iterable[Aggregate5m], local_day: date,
     now_utc = now.astimezone(timezone.utc)
     solar = []
     house = []
+    grid_import = []
     battery = []
     used_timestamps = []
     seen_wall_buckets = set()
@@ -113,6 +116,10 @@ def build_chart(rows: Iterable[Aggregate5m], local_day: date,
             solar.append((wall_minutes, x, power_y(row.solar_power_kw)))
         if math.isfinite(row.house_power_kw):
             house.append((wall_minutes, x, power_y(row.house_power_kw)))
+        # Keep signed grid semantics in storage, but chart only actual imports.
+        # Omitting non-positive buckets avoids a visually heavy zero baseline.
+        if math.isfinite(row.grid_power_kw) and row.grid_power_kw > 0.0:
+            grid_import.append((wall_minutes, x, power_y(row.grid_power_kw)))
         if row.battery_available and math.isfinite(row.battery_soc_pct):
             battery.append((wall_minutes, x, battery_y(row.battery_soc_pct)))
         used_timestamps.append(bucket)
@@ -122,10 +129,12 @@ def build_chart(rows: Iterable[Aggregate5m], local_day: date,
         solar_area=_area_path(solar_segments),
         solar_line=_line_path(solar_segments),
         house_line=_line_path(_segments(house)),
+        grid_import_line=_line_path(_segments(grid_import)),
         battery_line=_line_path(_segments(battery)),
         battery_available=bool(battery),
         solar_points=len(solar),
         house_points=len(house),
+        grid_import_points=len(grid_import),
         battery_points=len(battery),
         latest_timestamp=max(used_timestamps).isoformat() if used_timestamps else None,
     )

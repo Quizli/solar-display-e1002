@@ -127,6 +127,7 @@ def build_web_payload(database, view, snapshot, now=None):
             "end_at": end.isoformat(),
             "solar_power_kw": _number(row.solar_power_kw),
             "house_consumption_kw": _number(row.house_power_kw),
+            "grid_import_kw": _number(max(0.0, row.grid_power_kw)),
             "battery_state_of_charge_percent": (
                 _number(row.battery_soc_pct) if row.battery_available else None
             ),
