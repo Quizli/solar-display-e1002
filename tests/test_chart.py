@@ -9,11 +9,11 @@ from renderer.src.render import render_dashboard
 from solar_data.storage import Aggregate5m
 
 
-def aggregate(timestamp, solar=4.0, house=2.0, soc=60.0, battery=True):
+def aggregate(timestamp, solar=4.0, house=2.0, soc=60.0, battery=True, grid=0.0):
     return Aggregate5m(
         bucket_start=timestamp, solar_power_kw=solar, house_power_kw=house,
         heat_power_kw=0.0, battery_soc_pct=soc, battery_power_kw=0.0,
-        grid_power_kw=0.0, energy_today_kwh=1.0, sample_count=1,
+        grid_power_kw=grid, energy_today_kwh=1.0, sample_count=1,
         battery_available=battery, heat_available=False,
     )
 
@@ -68,19 +68,34 @@ class DailyChartTest(unittest.TestCase):
         self.assertEqual(present.battery_points, 1)
         self.assertTrue(present.battery_line.startswith("M "))
 
+    def test_grid_series_contains_only_positive_import_buckets(self):
+        chart = build_chart([
+            aggregate("2026-07-25T08:00:00+00:00", grid=4),
+            aggregate("2026-07-25T08:05:00+00:00", grid=0),
+            aggregate("2026-07-25T08:10:00+00:00", grid=-4),
+        ], self.day, self.now)
+        self.assertEqual(chart.grid_import_points, 1)
+        self.assertEqual(chart.grid_import_line.count("M "), 1)
+        self.assertTrue(chart.grid_import_line.endswith(
+            f" {power_y(4):.2f}".rstrip("0").rstrip(".")))
+
     def test_svg_has_dynamic_paths_and_no_placeholders(self):
         chart = build_chart([
-            aggregate("2026-07-25T08:00:00+00:00", battery=False),
+            aggregate("2026-07-25T08:00:00+00:00", battery=False, grid=-4),
         ], self.day, self.now)
         svg = render_dashboard({
             "chart_solar_area": chart.solar_area,
             "chart_solar_line": chart.solar_line,
             "chart_house_line": chart.house_line,
+            "chart_grid_import_line": chart.grid_import_line,
             "chart_battery_line": chart.battery_line,
         })
         self.assertNotIn("{{", svg)
         self.assertIn(f'd="{chart.solar_line}"', svg)
         self.assertNotIn('<path d=""', svg)
+        self.assertIn("Netzbezug (kW)", svg)
+        self.assertIn("Batterie (%)", svg)
+        self.assertIn('stroke="#E02020" stroke-width="1.7"', svg)
 
 
 if __name__ == "__main__":
