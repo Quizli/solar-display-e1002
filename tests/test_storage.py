@@ -1,6 +1,6 @@
 import tempfile
 import unittest
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from fronius.model import LiveData
@@ -156,6 +156,64 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(result.source, "total_counter")
         self.assertTrue(result.complete)
 
+    def test_total_counter_baseline_exactly_six_hours_old_is_complete(self):
+        day = date(2026, 7, 25)
+        local_start, _ = self.database._local_day_bounds(day)
+        self.database.store_snapshot(snapshot(
+            _utc_text(local_start - timedelta(hours=6)), total=100
+        ))
+        self.database.store_snapshot(snapshot(
+            _utc_text(local_start + timedelta(hours=1)), total=103
+        ))
+
+        result = self.database.daily_energy(day)
+
+        self.assertEqual(result, self.database._daily_energy_through(
+            day, local_start + timedelta(hours=1, minutes=1)
+        ))
+        self.assertEqual(result.energy_today_kwh, 3)
+        self.assertEqual(result.source, "total_counter")
+        self.assertTrue(result.complete)
+
+    def test_total_counter_baseline_over_six_hours_old_is_partial(self):
+        day = date(2026, 7, 25)
+        local_start, _ = self.database._local_day_bounds(day)
+        self.database.store_snapshot(snapshot(
+            _utc_text(local_start - timedelta(hours=6, minutes=1)), total=100
+        ))
+        self.database.store_snapshot(snapshot(
+            _utc_text(local_start + timedelta(hours=1)), total=103
+        ))
+        self.database.store_snapshot(snapshot(
+            _utc_text(local_start + timedelta(hours=2)), total=108
+        ))
+
+        result = self.database.daily_energy(day)
+
+        self.assertEqual(result.energy_today_kwh, 5)
+        self.assertEqual(result.source, "total_counter")
+        self.assertFalse(result.complete)
+
+    def test_multi_day_outage_does_not_inflate_daily_counter_yield(self):
+        day = date(2026, 7, 25)
+        local_start, _ = self.database._local_day_bounds(day)
+        self.database.store_snapshot(snapshot(
+            _utc_text(local_start - timedelta(days=3)), total=4500
+        ))
+        self.database.store_snapshot(snapshot(
+            _utc_text(local_start + timedelta(hours=10)), total=4750
+        ))
+        self.database.store_snapshot(snapshot(
+            _utc_text(local_start + timedelta(hours=18)), total=4760
+        ))
+
+        result = self.database.daily_energy(day)
+
+        self.assertEqual(result.energy_today_kwh, 10)
+        self.assertNotEqual(result.energy_today_kwh, 260)
+        self.assertEqual(result.source, "total_counter")
+        self.assertFalse(result.complete)
+
     def test_missing_prior_baseline_returns_partial_counter_result(self):
         self.database.store_snapshot(snapshot("2026-07-25T08:00:00+00:00", total=105))
         self.database.store_snapshot(snapshot("2026-07-25T18:00:00+00:00", total=111))
@@ -287,6 +345,50 @@ class StorageTest(unittest.TestCase):
         for field in preserved:
             self.assertEqual(after[field], before[field])
         self.assertEqual(self.database.repair_aggregate_daily_energy(day), 0)
+
+    def test_repair_removes_stale_baseline_inflation_and_preserves_other_fields(self):
+        day = date(2026, 7, 25)
+        local_start, local_end = self.database._local_day_bounds(day)
+        self.database.store_snapshot(snapshot(
+            _utc_text(local_start - timedelta(days=2)), energy=0, total=4500
+        ))
+        self.database.store_snapshot(snapshot(
+            _utc_text(local_start + timedelta(hours=10, minutes=1)),
+            value=3, soc=72, energy=0, total=4750
+        ))
+        self.database.store_snapshot(snapshot(
+            _utc_text(local_start + timedelta(hours=10, minutes=6)),
+            value=4, soc=73, energy=0, total=4760
+        ))
+        self.database.aggregate_completed(local_start + timedelta(hours=10, minutes=15))
+        self.database.connection.execute(
+            """UPDATE aggregates_5m SET energy_today_kwh = 260
+               WHERE bucket_start_utc >= ? AND bucket_start_utc < ?""",
+            (_utc_text(local_start), _utc_text(local_end)),
+        )
+        self.database.connection.commit()
+        before = self.database.connection.execute(
+            """SELECT * FROM aggregates_5m
+               WHERE bucket_start_utc >= ? AND bucket_start_utc < ?
+               ORDER BY bucket_start_utc""",
+            (_utc_text(local_start), _utc_text(local_end)),
+        ).fetchall()
+
+        self.assertEqual(self.database.repair_aggregate_daily_energy(day), 2)
+
+        after = self.database.connection.execute(
+            """SELECT * FROM aggregates_5m
+               WHERE bucket_start_utc >= ? AND bucket_start_utc < ?
+               ORDER BY bucket_start_utc""",
+            (_utc_text(local_start), _utc_text(local_end)),
+        ).fetchall()
+        energies = [row["energy_today_kwh"] for row in after]
+        self.assertEqual(energies, sorted(energies))
+        self.assertEqual(energies[-1], 10)
+        self.assertNotIn(260, energies)
+        for old, repaired in zip(before, after):
+            for field in set(old.keys()) - {"energy_today_kwh"}:
+                self.assertEqual(repaired[field], old[field])
 
     def test_positive_day_energy_is_used_when_total_counter_is_absent(self):
         self.database.store_snapshot(snapshot("2026-07-25T08:01:00+00:00",
