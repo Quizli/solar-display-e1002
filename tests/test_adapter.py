@@ -59,7 +59,7 @@ class NormalizeLiveDataTest(unittest.TestCase):
             "battery_percent": result.battery_soc_pct,
             "battery_power_kw": result.battery_power_kw,
         })
-        self.assertIn("Batteriebezug", svg)
+        self.assertIn("Batterie liefert", svg)
         self.assertNotIn("Batterieladung", svg)
 
     def test_active_reserva_charging_and_idle_power(self):
