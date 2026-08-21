@@ -10,6 +10,7 @@ from .timezones import ZURICH
 
 
 UTC = timezone.utc
+MAX_TOTAL_COUNTER_BASELINE_AGE = timedelta(hours=6)
 POWER_FIELDS = (
     "solar_power_kw",
     "house_power_kw",
@@ -527,7 +528,7 @@ class SolarDatabase:
         cutoff = min(max(timestamp_utc.astimezone(UTC), local_start), local_end)
         start, end = _utc_text(local_start), _utc_text(cutoff)
         last_before = self.connection.execute(
-            """SELECT energy_total_kwh FROM raw_samples
+            """SELECT timestamp_utc, energy_total_kwh FROM raw_samples
                WHERE timestamp_utc < ? AND energy_total_kwh IS NOT NULL
                ORDER BY timestamp_utc DESC LIMIT 1""",
             (start,),
@@ -542,8 +543,12 @@ class SolarDatabase:
 
         valid_day_values = [row[0] for row in day_values
                             if math.isfinite(row[0]) and row[0] >= 0]
-        valid_baseline = (last_before[0] if last_before and
-                          math.isfinite(last_before[0]) and last_before[0] >= 0 else None)
+        valid_baseline = None
+        if (last_before and math.isfinite(last_before["energy_total_kwh"]) and
+                last_before["energy_total_kwh"] >= 0):
+            baseline_age = local_start - _aware_utc(last_before["timestamp_utc"])
+            if timedelta(0) <= baseline_age <= MAX_TOTAL_COUNTER_BASELINE_AGE:
+                valid_baseline = last_before["energy_total_kwh"]
         zero_counter_result = None
         if valid_day_values:
             baseline = valid_baseline if valid_baseline is not None else valid_day_values[0]
