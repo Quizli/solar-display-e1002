@@ -41,11 +41,11 @@ class WebPublisherTest(unittest.TestCase):
             energy_today_kwh=energy, energy_total_kwh=100 + energy,
             battery_available=battery, heat_available=heat))
 
-    def aggregate(self, minute=5, battery=True):
+    def aggregate(self, minute=5, battery=True, grid=-0.5):
         start = self.now.replace(minute=minute, second=0, microsecond=0)
         self.database.connection.execute(
             "INSERT INTO aggregates_5m VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (_utc_text(start), 8, 6, 2, 72, 1.5, -0.5, 12, 4,
+            (_utc_text(start), 8, 6, 2, 72, 1.5, grid, 12, 4,
              int(battery), 1))
         self.database.connection.commit()
 
@@ -88,12 +88,25 @@ class WebPublisherTest(unittest.TestCase):
         self.assertEqual(payload["live"]["grid_flow"]["magnitude_kw"], .5)
         self.assertEqual(len(payload["chart"]["series"]), 2)
         self.assertEqual(payload["chart"]["series"][0]["sample_count"], 4)
-        self.assertEqual(payload["chart"]["series"][0]["grid_import_kw"], 0)
+        self.assertEqual(payload["chart"]["series"][0]["grid_import_kw"], .5)
         self.assertEqual(
             payload["chart"]["series"][0]["battery_state_of_charge_percent"], 72)
         self.assertIn("fact_id", payload["insight"])
         self.assertIn("historical_comparison", payload)
         json.dumps(payload, allow_nan=False)
+
+    def test_chart_grid_import_uses_negative_internal_grid_flow(self):
+        self.now = self.now.replace(minute=20)
+        self.aggregate(0, grid=-4)
+        self.aggregate(5, grid=0)
+        self.aggregate(10, grid=4)
+        self.snapshot()
+
+        payload, _ = self.payload()
+
+        self.assertEqual(
+            [row["grid_import_kw"] for row in payload["chart"]["series"]],
+            [4, 0, 0])
 
     def test_live_values_come_from_snapshot_while_chart_uses_aggregates(self):
         self.aggregate(0)

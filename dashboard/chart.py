@@ -116,10 +116,10 @@ def build_chart(rows: Iterable[Aggregate5m], local_day: date,
             solar.append((wall_minutes, x, power_y(row.solar_power_kw)))
         if math.isfinite(row.house_power_kw):
             house.append((wall_minutes, x, power_y(row.house_power_kw)))
-        # Keep signed grid semantics in storage, but chart only actual imports.
-        # Omitting non-positive buckets avoids a visually heavy zero baseline.
-        if math.isfinite(row.grid_power_kw) and row.grid_power_kw > 0.0:
-            grid_import.append((wall_minutes, x, power_y(row.grid_power_kw)))
+        # Internal grid flow is negative for import and positive for export.
+        # Omitting zero/export buckets avoids a visually heavy zero baseline.
+        if math.isfinite(row.grid_power_kw) and row.grid_power_kw < 0.0:
+            grid_import.append((wall_minutes, x, power_y(abs(row.grid_power_kw))))
         if row.battery_available and math.isfinite(row.battery_soc_pct):
             battery.append((wall_minutes, x, battery_y(row.battery_soc_pct)))
         used_timestamps.append(bucket)

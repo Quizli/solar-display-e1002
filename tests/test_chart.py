@@ -70,9 +70,9 @@ class DailyChartTest(unittest.TestCase):
 
     def test_grid_series_contains_only_positive_import_buckets(self):
         chart = build_chart([
-            aggregate("2026-07-25T08:00:00+00:00", grid=-3),
+            aggregate("2026-07-25T08:00:00+00:00", grid=4),
             aggregate("2026-07-25T08:05:00+00:00", grid=0),
-            aggregate("2026-07-25T08:10:00+00:00", grid=4),
+            aggregate("2026-07-25T08:10:00+00:00", grid=-4),
         ], self.day, self.now)
         self.assertEqual(chart.grid_import_points, 1)
         self.assertEqual(chart.grid_import_line.count("M "), 1)
@@ -81,7 +81,7 @@ class DailyChartTest(unittest.TestCase):
 
     def test_svg_has_dynamic_paths_and_no_placeholders(self):
         chart = build_chart([
-            aggregate("2026-07-25T08:00:00+00:00", battery=False, grid=4),
+            aggregate("2026-07-25T08:00:00+00:00", battery=False, grid=-4),
         ], self.day, self.now)
         svg = render_dashboard({
             "chart_solar_area": chart.solar_area,
