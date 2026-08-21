@@ -85,9 +85,45 @@ def _total_energy(power_flow: Mapping[str, Any]) -> Optional[float]:
     return sum(totals) / 1000.0 if totals else None
 
 
-def _battery(_: Optional[Mapping[str, Any]]) -> Tuple[bool, float, float]:
-    # No real storage field names or power direction have been verified yet.
-    # Keeping this mapping isolated makes the future sign conversion local.
+def _battery(
+    storage: Optional[Mapping[str, Any]], site: Mapping[str, Any]
+) -> Tuple[bool, float, float]:
+    """Normalize an enabled Fronius storage device and system battery power.
+
+    Fronius reports positive ``P_Akku`` while the battery is discharging and
+    negative values while it is charging.  The display model deliberately has
+    the opposite convention, so the sign inversion belongs here at the adapter
+    boundary and must not be repeated by renderers.
+    """
+    if storage is None:
+        return False, 0.0, 0.0
+    body = storage.get("Body")
+    devices = body.get("Data") if isinstance(body, Mapping) else None
+    if not isinstance(devices, Mapping):
+        return False, 0.0, 0.0
+
+    battery_power_w = site.get("P_Akku")
+    if (isinstance(battery_power_w, bool)
+            or not isinstance(battery_power_w, (int, float))
+            or not math.isfinite(float(battery_power_w))):
+        return False, 0.0, 0.0
+
+    for device in devices.values():
+        controller = device.get("Controller") if isinstance(device, Mapping) else None
+        if not isinstance(controller, Mapping):
+            continue
+        enabled = controller.get("Enable")
+        if (isinstance(enabled, bool)
+                or not isinstance(enabled, (int, float))
+                or not math.isfinite(float(enabled))
+                or float(enabled) != 1.0):
+            continue
+        soc = controller.get("StateOfCharge_Relative")
+        if (isinstance(soc, bool) or not isinstance(soc, (int, float))
+                or not math.isfinite(float(soc)) or not 0 <= float(soc) <= 100):
+            continue
+        return True, float(soc), -float(battery_power_w) / 1000.0
+
     return False, 0.0, 0.0
 
 
@@ -130,7 +166,7 @@ def normalize_live_data(
     pv_w = _finite_number(site.get("P_PV"), "P_PV")
     load_w = _finite_number(site.get("P_Load"), "P_Load")
     grid_w = _finite_number(site.get("P_Grid"), "P_Grid")
-    battery_available, battery_soc, battery_power = _battery(storage)
+    battery_available, battery_soc, battery_power = _battery(storage, site)
     heat_available, heat_power = _heat(ohmpilot)
 
     return LiveData(

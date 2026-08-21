@@ -1,0 +1,18 @@
+{
+  "Body": {
+    "Data": {
+      "0": {
+        "Controller": {
+          "Capacity_Maximum": 15795.0,
+          "DesignedCapacity": 15795.0,
+          "Enable": 1,
+          "StateOfCharge_Relative": 35.400001525878906,
+          "Temperature_Cell": 25.15,
+          "Voltage_DC": 530.7000122070312,
+          "Current_DC": -0.5992085924250988,
+          "Details": {"Manufacturer": "Fronius", "Model": "Reserva"}
+        }
+      }
+    }
+  }
+}
