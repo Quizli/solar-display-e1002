@@ -132,7 +132,7 @@ def render_dashboard(data, template=None):
     elif battery_power > .05:
         battery_label, battery_arrow_svg, battery_flow = "Batterieladung", down_arrow(391, RED), format_1(abs(battery_power))
     elif battery_power < -.05:
-        battery_label, battery_arrow_svg, battery_flow = "Batterie liefert", up_arrow(391, GREEN), format_1(abs(battery_power))
+        battery_label, battery_arrow_svg, battery_flow = "Batteriebezug", up_arrow(391, GREEN), format_1(abs(battery_power))
     else:
         battery_label, battery_arrow_svg, battery_flow = "Batterie", "", "0.0"
 
