@@ -96,17 +96,16 @@ class WebPublisherTest(unittest.TestCase):
         json.dumps(payload, allow_nan=False)
 
     def test_chart_grid_import_uses_negative_internal_grid_flow(self):
-        self.now = self.now.replace(minute=20)
-        self.aggregate(0, grid=-4)
-        self.aggregate(5, grid=0)
-        self.aggregate(10, grid=4)
+        self.now = self.now.replace(minute=35)
+        for minute, grid in enumerate((-0.4, -0.49, -0.5, -1.2, 4, 0)):
+            self.aggregate(minute * 5, grid=grid)
         self.snapshot()
 
         payload, _ = self.payload()
 
         self.assertEqual(
             [row["grid_import_kw"] for row in payload["chart"]["series"]],
-            [4, 0, 0])
+            [None, None, 0.5, 1.2, None, None])
 
     def test_live_values_come_from_snapshot_while_chart_uses_aggregates(self):
         self.aggregate(0)

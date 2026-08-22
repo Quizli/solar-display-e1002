@@ -23,6 +23,7 @@
 
   const batteryLabels = Object.freeze({ charging: "Batterie lädt", discharging: "Batterie liefert", idle: "Batterie inaktiv", unavailable: "Batterie nicht verfügbar" });
   const gridLabels = Object.freeze({ exporting: "Einspeisung", importing: "Netzbezug", idle: "Kein Netzfluss", unavailable: "Netz nicht verfügbar" });
+  const GRID_IMPORT_PLOT_THRESHOLD_KW = 0.5;
   const componentMap = Object.freeze({
     solar_data: ["solar", "house-consumption", "grid-flow", "today"], battery: ["battery", "battery-flow"],
     heat: ["heat"], weather: ["weather"], chart: ["chart"], insight: ["insight"], historical_comparison: ["historical-comparison"]
@@ -88,7 +89,7 @@
   function chartModel(series) {
     const points = series.map(row => {
       const date = validInstant(row.start_at); const parts = chartTimeFormat.formatToParts(date); const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
-      return { minute: Number(values.hour) * 60 + Number(values.minute), time: date.getTime(), solar: row.solar_power_kw, house: row.house_consumption_kw, gridImport: finite(row.grid_import_kw) && row.grid_import_kw > 0 ? row.grid_import_kw : null, battery: row.battery_state_of_charge_percent };
+      return { minute: Number(values.hour) * 60 + Number(values.minute), time: date.getTime(), solar: row.solar_power_kw, house: row.house_consumption_kw, gridImport: finite(row.grid_import_kw) && row.grid_import_kw >= GRID_IMPORT_PLOT_THRESHOLD_KW ? row.grid_import_kw : null, battery: row.battery_state_of_charge_percent };
     }).sort((a, b) => a.time - b.time);
     const values = [0]; points.forEach(point => [point.solar, point.house, point.gridImport].forEach(value => { if (finite(value)) values.push(value); }));
     const maximum = Math.max(...values, 1), minimum = Math.min(...values, 0); const raw = Math.max(maximum - minimum, 1); const step = Math.pow(10, Math.floor(Math.log10(raw))) / 2;

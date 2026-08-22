@@ -64,8 +64,10 @@ class WebDashboardJavaScriptTests(unittest.TestCase):
 const weather=clone(good);weather.status.overall="degraded";weather.status.affected_components=["weather"];weather.status.components.weather="invalid";weather.header.weather_condition=null;weather.header.sunshine_hours=null;weather.header.sunrise=null;weather.header.sunset=null;
 const invalid=[];let p;p=clone(good);delete p.live.grid_flow;invalid.push(p);p=clone(good);p.data.age_seconds="8";invalid.push(p);p=clone(good);p.schema_version="2.0";invalid.push(p);p=clone(good);p.live.battery_flow.direction="full";invalid.push(p);p=clone(good);p.chart.series[0].start_at="bad";invalid.push(p);p=clone(good);p.chart.series[0].battery_state_of_charge_percent=101;invalid.push(p);
 const model=api.chartModel(good.chart.series),x=v=>v,y=v=>v,weatherView=api.buildViewModel(weather),withoutComparison=clone(good);withoutComparison.historical_comparison=null;withoutComparison.status.components.historical_comparison="missing";const emptyComparisonView=api.buildViewModel(withoutComparison);
+const thresholdRows=[.4,.49,.5,1.2,0].map((value,index)=>({...good.chart.series[0],start_at:`2026-07-27T08:${String(index*5).padStart(2,"0")}:00Z`,grid_import_kw:value}));
+const thresholdModel=api.chartModel(thresholdRows);
 const clippingModel={top:20,bottom:-5},axisLayouts=[280,350,780,1200].map(width=>api.chartLayout({clientWidth:width,clientHeight:125},clippingModel));
-process.stdout.write(JSON.stringify({emptyComparisonView,axisLayouts,formats:[api.formatTime(null),api.formatDate(null),api.formatTime(undefined),api.formatDate(""),api.formatTime(false),api.formatDate("bad")],invalid:invalid.map(api.validPayload),weatherValid:api.validPayload(weather),weather:weatherView,chart:{bottom:model.bottom,solar:api.pathSequences(model,"solar",x,y).length,house:api.pathSequences(model,"house",x,y).length,gridImport:api.pathSequences(model,"gridImport",x,y).length,gridValues:model.points.map(point=>point.gridImport),battery:api.pathSequences(model,"battery",x,y).length,batteryValues:model.points.map(point=>point.battery)},geometry320:api.chartGeometry({clientWidth:280,clientHeight:125}),geometry390:api.chartGeometry({clientWidth:350,clientHeight:125}),timeTicksMobile:api.chartTimeTicks(256),timeTicksWide:api.chartTimeTicks(326)}));'''
+process.stdout.write(JSON.stringify({emptyComparisonView,axisLayouts,formats:[api.formatTime(null),api.formatDate(null),api.formatTime(undefined),api.formatDate(""),api.formatTime(false),api.formatDate("bad")],invalid:invalid.map(api.validPayload),weatherValid:api.validPayload(weather),weather:weatherView,chart:{bottom:model.bottom,solar:api.pathSequences(model,"solar",x,y).length,house:api.pathSequences(model,"house",x,y).length,gridImport:api.pathSequences(model,"gridImport",x,y).length,gridValues:model.points.map(point=>point.gridImport),gridThresholdValues:thresholdModel.points.map(point=>point.gridImport),battery:api.pathSequences(model,"battery",x,y).length,batteryValues:model.points.map(point=>point.battery)},geometry320:api.chartGeometry({clientWidth:280,clientHeight:125}),geometry390:api.chartGeometry({clientWidth:350,clientHeight:125}),timeTicksMobile:api.chartTimeTicks(256),timeTicksWide:api.chartTimeTicks(326)}));'''
         cls.result = run_js(pure)
 
         controller = JS_BOOT + DOM_HELPER + f"const good={payload};" + r'''
@@ -163,6 +165,8 @@ process.stdout.write(JSON.stringify({emptyComparisonView,axisLayouts,formats:[ap
         self.assertEqual(self.result["chart"]["house"], 2)
         self.assertEqual(self.result["chart"]["gridImport"], 1)
         self.assertEqual(self.result["chart"]["gridValues"], [None, 1.5, None])
+        self.assertEqual(self.result["chart"]["gridThresholdValues"],
+                         [None, None, 0.5, 1.2, None])
         self.assertEqual(self.result["chart"]["battery"], 1)
         self.assertEqual(self.result["chart"]["batteryValues"], [55, 56, None])
         self.assertEqual(self.result["timeTicksMobile"], [0, 480, 960, 1440])

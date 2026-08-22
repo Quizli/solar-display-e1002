@@ -2,7 +2,8 @@ import unittest
 from datetime import date, datetime, timezone
 
 from dashboard.chart import (
-    PLOT_BOTTOM, PLOT_LEFT, PLOT_RIGHT, PLOT_TOP, POWER_MAX_KW,
+    GRID_IMPORT_PLOT_THRESHOLD_KW, PLOT_BOTTOM, PLOT_LEFT, PLOT_RIGHT,
+    PLOT_TOP, POWER_MAX_KW,
     battery_y, build_chart, power_y, x_for_local_time,
 )
 from renderer.src.render import render_dashboard
@@ -68,16 +69,20 @@ class DailyChartTest(unittest.TestCase):
         self.assertEqual(present.battery_points, 1)
         self.assertTrue(present.battery_line.startswith("M "))
 
-    def test_grid_series_contains_only_positive_import_buckets(self):
+    def test_grid_series_plots_only_import_at_or_above_threshold(self):
         chart = build_chart([
+            aggregate("2026-07-25T07:40:00+00:00", grid=-0.4),
+            aggregate("2026-07-25T07:45:00+00:00", grid=-0.49),
+            aggregate("2026-07-25T07:50:00+00:00", grid=-0.5),
+            aggregate("2026-07-25T07:55:00+00:00", grid=-1.2),
             aggregate("2026-07-25T08:00:00+00:00", grid=4),
             aggregate("2026-07-25T08:05:00+00:00", grid=0),
-            aggregate("2026-07-25T08:10:00+00:00", grid=-4),
         ], self.day, self.now)
-        self.assertEqual(chart.grid_import_points, 1)
+        self.assertEqual(GRID_IMPORT_PLOT_THRESHOLD_KW, 0.5)
+        self.assertEqual(chart.grid_import_points, 2)
         self.assertEqual(chart.grid_import_line.count("M "), 1)
         self.assertTrue(chart.grid_import_line.endswith(
-            f" {power_y(4):.2f}".rstrip("0").rstrip(".")))
+            f" {power_y(1.2):.2f}".rstrip("0").rstrip(".")))
 
     def test_svg_has_dynamic_paths_and_no_placeholders(self):
         chart = build_chart([
