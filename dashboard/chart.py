@@ -15,6 +15,7 @@ PLOT_TOP = 88.0
 PLOT_BOTTOM = 276.0
 POWER_MAX_KW = 24.0
 BATTERY_MAX_PCT = 100.0
+GRID_IMPORT_PLOT_THRESHOLD_KW = 0.5
 
 
 @dataclass(frozen=True)
@@ -117,8 +118,9 @@ def build_chart(rows: Iterable[Aggregate5m], local_day: date,
         if math.isfinite(row.house_power_kw):
             house.append((wall_minutes, x, power_y(row.house_power_kw)))
         # Internal grid flow is negative for import and positive for export.
-        # Omitting zero/export buckets avoids a visually heavy zero baseline.
-        if math.isfinite(row.grid_power_kw) and row.grid_power_kw < 0.0:
+        # Omit export and negligible import to avoid red points/line fragments.
+        if (math.isfinite(row.grid_power_kw) and
+                row.grid_power_kw <= -GRID_IMPORT_PLOT_THRESHOLD_KW):
             grid_import.append((wall_minutes, x, power_y(abs(row.grid_power_kw))))
         if row.battery_available and math.isfinite(row.battery_soc_pct):
             battery.append((wall_minutes, x, battery_y(row.battery_soc_pct)))

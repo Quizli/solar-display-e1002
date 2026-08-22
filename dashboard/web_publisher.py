@@ -16,6 +16,7 @@ from .live_view import build_fact_context
 
 
 SCHEMA_VERSION = "1.0"
+GRID_IMPORT_PLOT_THRESHOLD_KW = 0.5
 
 
 def _number(value):
@@ -127,7 +128,10 @@ def build_web_payload(database, view, snapshot, now=None):
             "end_at": end.isoformat(),
             "solar_power_kw": _number(row.solar_power_kw),
             "house_consumption_kw": _number(row.house_power_kw),
-            "grid_import_kw": _number(max(0.0, -row.grid_power_kw)),
+            "grid_import_kw": (
+                _number(-row.grid_power_kw)
+                if row.grid_power_kw <= -GRID_IMPORT_PLOT_THRESHOLD_KW else None
+            ),
             "battery_state_of_charge_percent": (
                 _number(row.battery_soc_pct) if row.battery_available else None
             ),
