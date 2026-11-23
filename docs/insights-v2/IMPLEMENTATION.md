@@ -1,6 +1,6 @@
 # Insights v2 — implementation contract
 
-Status: curated implementation brief. The five sibling JSON files are the editorial source of truth, not live code. Use their exact templates and numeric assumptions. Do not generate new copy or invent values to fill a missing context. Changes to wording should be limited to necessary corrections for grammar/width and documented explicitly. The frozen 800×480 SVG and existing responsive web layout remain unchanged.
+Status: curated implementation brief. The five [runtime JSON catalogues](../../dashboard/facts/content/) are the editorial source of truth, not live code. Use their exact templates and numeric assumptions. Do not generate new copy or invent values to fill a missing context. Changes to wording should be limited to necessary corrections for grammar/width and documented explicitly. The frozen 800×480 SVG and existing responsive web layout remain unchanged.
 
 ## 1. Outcome and scope
 

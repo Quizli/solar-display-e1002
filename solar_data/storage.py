@@ -159,6 +159,16 @@ class SolarDatabase:
                     created_at_utc TEXT NOT NULL,
                     context_json TEXT
                 );
+                CREATE INDEX IF NOT EXISTS fact_history_day ON fact_history(local_day);
+                CREATE INDEX IF NOT EXISTS fact_history_recent ON fact_history(created_at_utc DESC);
+                CREATE INDEX IF NOT EXISTS fact_history_instant ON fact_history(julianday(local_hour));
+                CREATE TABLE IF NOT EXISTS milestone_events (
+                    event_key TEXT PRIMARY KEY, local_day TEXT NOT NULL,
+                    triggered_utc TEXT NOT NULL, fact_id TEXT NOT NULL,
+                    branch TEXT NOT NULL, values_json TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS milestone_day ON milestone_events(local_day);
+                CREATE TABLE IF NOT EXISTS insight_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 """
             )
             columns = {
@@ -225,13 +235,10 @@ class SolarDatabase:
         if local_hour.tzinfo is None or local_hour.utcoffset() is None:
             raise ValueError("local_hour must be timezone-aware")
         target = local_hour.astimezone(UTC)
-        rows = self.connection.execute("SELECT * FROM fact_history").fetchall()
-        earlier = [row for row in rows
-                   if datetime.fromisoformat(row["local_hour"]).astimezone(UTC) < target]
-        if not earlier:
-            return None
-        row = max(earlier, key=lambda item:
-                  datetime.fromisoformat(item["local_hour"]).astimezone(UTC))
+        row = self.connection.execute(
+            "SELECT * FROM fact_history WHERE julianday(local_hour) < julianday(?) "
+            "ORDER BY julianday(local_hour) DESC LIMIT 1", (target.isoformat(),)
+        ).fetchone()
         return self._fact_selection(row)
 
     def recent_catalog_fact_selections(self, fact_ids, limit: int = 12):
