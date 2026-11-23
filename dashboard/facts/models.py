@@ -23,6 +23,7 @@ class FactContext:
     sunshine_hours: Optional[float] = None
     previous_daylight_seconds: Optional[float] = None
     has_buckets: bool = False
+    complete_yield: bool = False
 
 
 @dataclass(frozen=True)

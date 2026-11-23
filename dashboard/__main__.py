@@ -47,7 +47,7 @@ def parser():
     preview = commands.add_parser("preview-facts")
     preview.add_argument("--from", dest="first", type=date.fromisoformat, required=True)
     preview.add_argument("--to", dest="last", type=date.fromisoformat, required=True)
-    preview.add_argument("--scenario", choices=("sunny-summer", "overcast-winter", "zero-production", "missing-data", "midnight-dst", "milestone-collision", "counter-reset"))
+    preview.add_argument("--scenario", choices=("cold-start", "sunny-summer", "overcast-winter", "zero-production", "missing-data", "midnight-dst", "milestone-collision", "counter-reset"))
     preview.add_argument("--db-path", default=argparse.SUPPRESS)
     commands.add_parser("once")
     commands.add_parser("status")

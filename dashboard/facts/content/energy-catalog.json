@@ -77,6 +77,10 @@
       "variants": [
         "{energy} kWh von {when} reichen für rund {count} Waschgänge à 0,5 kWh.",
         "Bei 0,5 kWh pro Waschgang entsprächen {energy} kWh von {when} rund {count} Ladungen."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Waschgang à 0,5 kWh.",
+        "Bei 0,5 kWh pro Waschgang entsprächen {energy} kWh von {when} rund {count} Ladung."
       ]
     },
     {
@@ -91,6 +95,10 @@
       "variants": [
         "Mit {energy} kWh von {when} wären rund {count} Spülgänge à 0,8 kWh möglich.",
         "Ein Geschirrspüler käme mit {energy} kWh von {when} auf rund {count} Eco-Gänge à 0,8 kWh."
+      ],
+      "singular_variants": [
+        "Mit {energy} kWh von {when} wäre rund {count} Spülgang à 0,8 kWh möglich.",
+        "Ein Geschirrspüler käme mit {energy} kWh von {when} auf rund {count} Eco-Gang à 0,8 kWh."
       ]
     },
     {
@@ -105,6 +113,10 @@
       "variants": [
         "{energy} kWh von {when} reichen für rund {count} Tumblerladungen à 2 kWh.",
         "Mit {energy} kWh von {when} liesse sich bei 2 kWh pro Gang rund {count} Mal Wäsche trocknen."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Tumblerladung à 2 kWh.",
+        "Mit {energy} kWh von {when} liesse sich bei 2 kWh pro Gang etwa einmal Wäsche trocknen."
       ]
     },
     {
@@ -119,6 +131,10 @@
       "variants": [
         "{energy} kWh von {when} reichen für rund {count} Kühlschranktage à 0,6 kWh.",
         "Ein Kühlschrank mit 0,6 kWh Tagesbedarf käme mit {energy} kWh von {when} rund {count} Tage aus."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Kühlschranktag à 0,6 kWh.",
+        "Ein Kühlschrank mit 0,6 kWh Tagesbedarf käme mit {energy} kWh von {when} rund {count} Tag aus."
       ]
     },
     {
@@ -165,6 +181,10 @@
       "variants": [
         "Mit {energy} kWh von {when} liessen sich rund {count} Espressi à 15 Wh zubereiten.",
         "{energy} kWh von {when}: rund {count} Espressi bei 15 Wh pro Tasse."
+      ],
+      "singular_variants": [
+        "Mit {energy} kWh von {when} liesse sich rund {count} Espresso à 15 Wh zubereiten.",
+        "{energy} kWh von {when}: rund {count} Espresso bei 15 Wh pro Tasse."
       ]
     },
     {
@@ -179,6 +199,10 @@
       "variants": [
         "Mit {energy} kWh von {when} liessen sich rund {count} Liter Wasser aufkochen (0,1 kWh/L).",
         "{energy} kWh von {when} reichen zum Aufkochen von rund {count} Litern Wasser (0,1 kWh/L)."
+      ],
+      "singular_variants": [
+        "Mit {energy} kWh von {when} liesse sich rund {count} Liter Wasser aufkochen (0,1 kWh/L).",
+        "{energy} kWh von {when} reichen zum Aufkochen von rund {count} Liter Wasser (0,1 kWh/L)."
       ]
     },
     {
@@ -195,6 +219,10 @@
       "variants": [
         "Ein Toaster könnte mit {energy} kWh von {when} rund {count} Scheiben rösten (40 Wh pro Scheibe).",
         "{energy} kWh von {when}: rund {count} geröstete Toastscheiben bei 40 Wh pro Stück."
+      ],
+      "singular_variants": [
+        "Ein Toaster könnte mit {energy} kWh von {when} rund {count} Scheibe rösten (40 Wh pro Scheibe).",
+        "{energy} kWh von {when}: rund {count} geröstete Toastscheibe bei 40 Wh pro Stück."
       ]
     },
     {
@@ -211,6 +239,10 @@
       "variants": [
         "{energy} kWh von {when} reichen für rund {count} Racletteportionen à 0,3 kWh.",
         "Bei 0,3 kWh pro Portion entsprächen {energy} kWh von {when} rund {count} Portionen Raclette."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Racletteportion à 0,3 kWh.",
+        "Bei 0,3 kWh pro Portion entsprächen {energy} kWh von {when} rund {count} Portion Raclette."
       ]
     },
     {
@@ -227,6 +259,10 @@
       "variants": [
         "Mit {energy} kWh von {when} liessen sich rund {count} Suppenportionen à 0,1 kWh aufwärmen.",
         "{energy} kWh von {when}: genug zum Aufwärmen von rund {count} Suppenportionen à 0,1 kWh."
+      ],
+      "singular_variants": [
+        "Mit {energy} kWh von {when} liesse sich rund {count} Suppenportion à 0,1 kWh aufwärmen.",
+        "{energy} kWh von {when}: genug zum Aufwärmen von rund {count} Suppenportion à 0,1 kWh."
       ]
     },
     {
@@ -241,6 +277,10 @@
       "variants": [
         "{energy} kWh von {when} reichen für rund {count} Ofengänge mit Pizza à 1 kWh.",
         "Bei 1 kWh je Ofengang wären mit {energy} kWh von {when} rund {count} Pizza-Backrunden möglich."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Ofengang mit Pizza à 1 kWh.",
+        "Bei 1 kWh je Ofengang wäre mit {energy} kWh von {when} rund {count} Pizza-Backrunde möglich."
       ]
     },
     {
@@ -299,6 +339,10 @@
       "variants": [
         "{energy} kWh von {when} reichen bei 5 Wh pro Würfel für rund {count} Eiswürfel.",
         "Eine Eismaschine könnte mit {energy} kWh von {when} rund {count} Würfel à 5 Wh herstellen."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen bei 5 Wh pro Würfel für rund {count} Eiswürfel.",
+        "Eine Eismaschine könnte mit {energy} kWh von {when} rund {count} Würfel à 5 Wh herstellen."
       ]
     },
     {
@@ -315,6 +359,10 @@
       "variants": [
         "{energy} kWh von {when} reichen für rund {count} Smartphone-Ladungen à 17 Wh.",
         "Ein Smartphone könnte mit {energy} kWh von {when} rund {count} Mal à 17 Wh geladen werden."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Smartphone-Ladung à 17 Wh.",
+        "Ein Smartphone könnte mit {energy} kWh von {when} etwa einmal geladen werden (17 Wh pro Ladung)."
       ]
     },
     {
@@ -329,6 +377,10 @@
       "variants": [
         "Mit {energy} kWh von {when} liesse sich ein Tablet rund {count} Mal à 40 Wh laden.",
         "{energy} kWh von {when}: rund {count} Tablet-Ladungen bei 40 Wh pro Ladung."
+      ],
+      "singular_variants": [
+        "Mit {energy} kWh von {when} liesse sich ein Tablet etwa einmal laden (40 Wh pro Ladung).",
+        "{energy} kWh von {when}: rund {count} Tablet-Ladung bei 40 Wh pro Ladung."
       ]
     },
     {
@@ -401,6 +453,10 @@
       "variants": [
         "{energy} kWh von {when} reichen für rund {count} E-Reader-Ladungen à 10 Wh.",
         "Ein E-Reader liesse sich mit {energy} kWh von {when} rund {count} Mal à 10 Wh laden."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} E-Reader-Ladung à 10 Wh.",
+        "Ein E-Reader liesse sich mit {energy} kWh von {when} etwa einmal laden (10 Wh pro Ladung)."
       ]
     },
     {
@@ -415,6 +471,10 @@
       "variants": [
         "{energy} kWh von {when} reichen für rund {count} Powerbank-Ladungen à 50 Wh.",
         "Mit {energy} kWh von {when} liessen sich rund {count} Powerbanks mit je 50 Wh laden."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Powerbank-Ladung à 50 Wh.",
+        "Mit {energy} kWh von {when} liesse sich rund {count} Powerbank mit 50 Wh laden."
       ]
     },
     {
@@ -789,6 +849,10 @@
       "variants": [
         "{energy} kWh von {when} reichen für rund {count} kurze Liftfahrten à 30 Wh.",
         "Bei 30 Wh pro kurzer Liftfahrt entsprächen {energy} kWh von {when} rund {count} Fahrten."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} kurze Liftfahrt à 30 Wh.",
+        "Bei 30 Wh pro kurzer Liftfahrt entsprächen {energy} kWh von {when} rund {count} Fahrt."
       ]
     },
     {
@@ -847,6 +911,10 @@
       "variants": [
         "{energy} kWh von {when}: Eine Tonne Last könnte theoretisch rund {count} Mal 100 m hochgehoben werden.",
         "Ohne Verluste reichen {energy} kWh von {when} für rund {count} Hübe einer Tonne um 100 m."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when}: Eine Tonne Last könnte theoretisch etwa einmal 100 m hochgehoben werden.",
+        "Ohne Verluste reichen {energy} kWh von {when} für rund {count} Hub einer Tonne um 100 m."
       ]
     },
     {
@@ -1079,6 +1147,10 @@
       "variants": [
         "Ohne Verluste könnte man mit {energy} kWh von {when} einen 1-t-Wagen rund {count} Mal auf 50 km/h beschleunigen.",
         "{energy} kWh von {when}: theoretisch {count} Starts von 0 auf 50 km/h für ein 1-t-Auto."
+      ],
+      "singular_variants": [
+        "Ohne Verluste könnte man mit {energy} kWh von {when} einen 1-t-Wagen etwa einmal auf 50 km/h beschleunigen.",
+        "{energy} kWh von {when}: theoretisch {count} Start von 0 auf 50 km/h für ein 1-t-Auto."
       ]
     },
     {
@@ -1093,6 +1165,10 @@
       "variants": [
         "{energy} kWh von {when} könnten eine 80-kg-Person theoretisch rund {count} Mal 2’800 Höhenmeter anheben.",
         "Ohne Verluste reichen {energy} kWh von {when} für rund {count} Aufstiege à 2’800 Höhenmeter einer 80-kg-Person."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} könnten eine 80-kg-Person theoretisch etwa einmal 2’800 Höhenmeter anheben.",
+        "Ohne Verluste reichen {energy} kWh von {when} für rund {count} Aufstieg à 2’800 Höhenmeter einer 80-kg-Person."
       ]
     },
     {

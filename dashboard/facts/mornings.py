@@ -1,8 +1,28 @@
 from datetime import datetime
 from dashboard.weather import weather_icon_variant
 from .calendar_rules import SEASONS
-from .editorial import Candidate, MORNING, duration, number
+from .editorial import Candidate, MORNING, number
 from .statistics import DAY
+
+
+def daylight_duration(seconds):
+    hours, minutes = divmod(int(seconds / 60 + 0.5), 60)
+    parts = []
+    if hours:
+        parts.append(f"{hours} Stunde" + ("n" if hours != 1 else ""))
+    if minutes or not hours:
+        parts.append(f"{minutes} Minute" + ("n" if minutes != 1 else ""))
+    return " ".join(parts)
+
+
+def technical_context(ctx):
+    return Candidate(
+        "TECH_CONTEXT",
+        "morning",
+        MORNING["TECH_CONTEXT"],
+        branch="default" if ctx.has_buckets else "empty_chart",
+        reference=ctx.now_local.date().isoformat(),
+    )
 
 
 def morning_candidates(ctx, history, values, phase, afterglow):
@@ -16,7 +36,14 @@ def morning_candidates(ctx, history, values, phase, afterglow):
         )
 
     if phase == "after_sunset":
-        add("ZERO_DAY_COMPLETE")
+        if (
+            ctx.complete_yield
+            and ctx.today_energy_kwh is not None
+            and 0 <= ctx.today_energy_kwh < 0.1
+        ):
+            add("ZERO_DAY_COMPLETE")
+        else:
+            result.append(technical_context(ctx))
         return result
     yesterday = day - DAY
     if yesterday in values:
@@ -48,7 +75,7 @@ def morning_candidates(ctx, history, values, phase, afterglow):
         if seconds > 0:
             add(
                 "DAYLIGHT",
-                duration=duration(seconds),
+                duration=daylight_duration(seconds),
                 sunrise=sunrise.strftime("%H:%M"),
                 sunset=ctx.sunset.strftime("%H:%M"),
             )
@@ -84,13 +111,13 @@ def morning_candidates(ctx, history, values, phase, afterglow):
         add("SUNSHINE_OUTLOOK", branch, sunshine=number(ctx.sunshine_hours))
     if ctx.weather_code is not None:
         add("WEATHER_OUTLOOK", weather_icon_variant(ctx.weather_code))
-    if phase == "pre_sunrise":
+    if phase == "pre_sunrise" and (sunrise or ctx.today_energy_kwh is not None):
         add(
             "NIGHT_STATUS",
             "sunrise_known" if sunrise else "generic",
             sunrise=sunrise.strftime("%H:%M") if sunrise else "",
         )
-    elif sunrise and now >= sunrise:
+    elif sunrise and now >= sunrise and ctx.today_energy_kwh is not None:
         add(
             "WAITING_STATUS",
             "late"
@@ -98,5 +125,5 @@ def morning_candidates(ctx, history, values, phase, afterglow):
             else "sunrise_known",
             sunrise=sunrise.strftime("%H:%M"),
         )
-    add("TECH_CONTEXT", "default" if ctx.has_buckets else "empty_chart")
+    result.append(technical_context(ctx))
     return result

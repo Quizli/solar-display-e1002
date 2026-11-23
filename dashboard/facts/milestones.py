@@ -68,8 +68,112 @@ def lifetime(state, timestamp, total, emit, config):
     )
 
 
+def reconcile_running(db, state, ctx, baseline, stamp, reliable, emit):
+    """Reconcile the current day against a trusted cumulative observation atomically."""
+    day = ctx.now_local.date().isoformat()
+    energy = ctx.today_energy_kwh
+    old = state.get("running", {})
+    if (
+        energy is None
+        or not math.isfinite(energy)
+        or energy < 0
+        or stamp < old.get("stamp", 0)
+    ):
+        return
+    same_day = old.get("day") == day
+    prior = old["energy"] if same_day else 0
+    corrected = same_day and (energy < prior or old.get("corrected", False))
+    if not (reliable or corrected):
+        return
+    midnight = ctx.now_local.replace(hour=0, minute=0, second=0, microsecond=0, fold=0)
+    previous_stamp = (
+        old.get("stamp", midnight.timestamp()) if same_day else midnight.timestamp()
+    )
+    if energy > prior + 24 * (stamp - previous_stamp) / 3600 + 0.1:
+        return
+
+    # Only completed earlier days form the permanent floor. Today's verified
+    # high-water mark is reversible, including after a publisher restart.
+    if same_day and "floor" in old:
+        floor = old["floor"]
+    elif same_day and state.get("barrier", 0) <= prior:
+        # Upgrade an existing v2 observation without retaining today's spike.
+        saved = db.execute(
+            "SELECT MAX(CAST(json_extract(values_json,'$.threshold') AS REAL)) "
+            "FROM milestone_events WHERE fact_id='PRODUCTION_BARRIER' AND local_day<? "
+            "AND json_extract(values_json,'$.invalid') IS NOT 1",
+            (day,),
+        ).fetchone()[0]
+        floor = max(baseline, saved or 0)
+    else:
+        floor = max(baseline, state.get("barrier", 0))
+
+    installation_ack = min(old.get("installation_ack", 0), energy) if same_day else 0
+    record_key = "DAILY_RECORD:" + day
+    record = db.execute(
+        "SELECT values_json FROM milestone_events WHERE event_key=?", (record_key,)
+    ).fetchone()
+    if record:
+        details = json.loads(record[0])
+        # Older events stored the displayed baseline. Recover the original
+        # precision from qualified history when its display value still agrees.
+        frozen = details.get("baseline_kwh")
+        if frozen is None:
+            label = details["old_record"]
+            frozen = (
+                baseline
+                if number(baseline) == label
+                else float(label.replace("’", "").replace(",", "."))
+            )
+        details.update(
+            energy=number(energy), baseline_kwh=frozen, invalid=energy <= frozen + 0.1
+        )
+        db.execute(
+            "UPDATE milestone_events SET values_json=? WHERE event_key=?",
+            (json.dumps(details), record_key),
+        )
+    elif old and prior <= baseline + 0.1 < energy:
+        emit(
+            "DAILY_RECORD",
+            day,
+            old_record=number(baseline),
+            baseline_kwh=baseline,
+            energy=number(energy),
+        )
+
+    if old:
+        reached = [
+            t
+            for t in EVENTS["PRODUCTION_BARRIER"]["thresholds_kwh"]
+            if max(floor, installation_ack) < t <= energy and (corrected or t > prior)
+        ]
+        if reached:
+            emit("PRODUCTION_BARRIER", str(max(reached)), threshold=max(reached))
+    db.execute(
+        """UPDATE milestone_events SET values_json=json_set(values_json,'$.invalid',
+                  CASE WHEN json_extract(values_json,'$.threshold') > ? THEN 1 ELSE 0 END)
+                  WHERE local_day=? AND fact_id='PRODUCTION_BARRIER'""",
+        (energy, day),
+    )
+    state["running"] = dict(
+        day=day,
+        energy=energy,
+        stamp=stamp,
+        corrected=corrected,
+        floor=floor,
+        installation_ack=installation_ack if old else energy,
+    )
+    state["barrier"] = max(floor, energy)
+
+
 def active_events(
-    database, ctx, history, write, snapshot=None, reliable=False, config=None
+    database,
+    ctx,
+    history,
+    write,
+    snapshot=None,
+    reliable=False,
+    config=None,
 ):
     config = os.environ if config is None else config
     day = ctx.now_local.date()
@@ -92,7 +196,12 @@ def active_events(
 
         def emit(ident, key, branch="default", **values):
             db.execute(
-                "INSERT OR IGNORE INTO milestone_events VALUES (?,?,?,?,?,?)",
+                """INSERT INTO milestone_events VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(event_key) DO UPDATE SET
+                       local_day=excluded.local_day, triggered_utc=excluded.triggered_utc,
+                       values_json=excluded.values_json
+                   WHERE json_extract(milestone_events.values_json,'$.invalid')=1
+                   AND milestone_events.local_day<>excluded.local_day""",
                 (
                     ident + ":" + key,
                     day.isoformat(),
@@ -169,57 +278,15 @@ def active_events(
                     ctx.now_local.tzinfo
                 )
                 lifetime(state, instant, snapshot.energy_total_kwh, emit, config)
-            energy = ctx.today_energy_kwh
-            if reliable and len(history) >= 2 and energy is not None:
-                baseline = max(history.values())
-                old = state.get("running", {})
-                prior = old.get("energy") if old.get("day") == day.isoformat() else 0
-                stamp = ctx.now_local.timestamp()
-                midnight = ctx.now_local.replace(
-                    hour=0, minute=0, second=0, microsecond=0, fold=0
-                ).timestamp()
-                prior_stamp = (
-                    old.get("stamp", midnight)
-                    if old.get("day") == day.isoformat()
-                    else midnight
+            if (reliable or ctx.complete_yield) and len(history) >= 2:
+                stamp = (
+                    datetime.fromisoformat(snapshot.timestamp).timestamp()
+                    if snapshot
+                    else ctx.now_local.timestamp()
                 )
-                plausible = (
-                    prior
-                    <= energy
-                    <= prior + 24 * max(0, stamp - prior_stamp) / 3600 + 0.1
+                reconcile_running(
+                    db, state, ctx, max(history.values()), stamp, reliable, emit
                 )
-                if plausible:
-                    if (
-                        state.get("running") is not None
-                        and prior <= baseline + 0.1 < energy
-                    ):
-                        emit(
-                            "DAILY_RECORD",
-                            day.isoformat(),
-                            old_record=number(baseline),
-                            energy=number(energy),
-                        )
-                    highest = max(baseline, state.get("barrier", 0))
-                    crossed = [
-                        t
-                        for t in EVENTS["PRODUCTION_BARRIER"]["thresholds_kwh"]
-                        if highest < t <= energy
-                    ]
-                    if crossed and state.get("running") is not None:
-                        emit(
-                            "PRODUCTION_BARRIER",
-                            str(max(crossed)),
-                            threshold=max(crossed),
-                        )
-                    state["barrier"] = max(highest, energy)
-                    state["running"] = dict(
-                        day=day.isoformat(), energy=energy, stamp=stamp
-                    )
-                    db.execute(
-                        "UPDATE milestone_events SET values_json=json_set(values_json,'$.energy',?) "
-                        "WHERE event_key=?",
-                        (number(energy), "DAILY_RECORD:" + day.isoformat()),
-                    )
             encoded = json.dumps(state)
             if not row or row[0] != encoded:
                 db.execute(
@@ -228,7 +295,7 @@ def active_events(
                 )
         events = list(
             db.execute(
-                "SELECT * FROM milestone_events WHERE local_day=? ORDER BY triggered_utc,event_key",
+                "SELECT * FROM milestone_events WHERE local_day=? AND json_extract(values_json,'$.invalid') IS NOT 1 ORDER BY triggered_utc,event_key",
                 (day.isoformat(),),
             )
         )

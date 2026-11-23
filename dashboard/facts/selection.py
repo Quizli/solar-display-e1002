@@ -14,7 +14,7 @@ from .editorial import (
 )
 from .engine import hour_key
 from .models import Story
-from .mornings import morning_candidates
+from .mornings import morning_candidates, technical_context
 from .width import text_width_px
 
 
@@ -144,8 +144,7 @@ def choose_insight(db, ctx, history, values, events, afterglow, write):
             if morning
             or (
                 phase == "after_sunset"
-                and ctx.today_energy_kwh is not None
-                and ctx.today_energy_kwh < 0.1
+                and (ctx.today_energy_kwh is None or ctx.today_energy_kwh < 0.1)
             )
             else []
         )
@@ -264,7 +263,9 @@ def choose_insight(db, ctx, history, values, events, afterglow, write):
                     )
     selected = pick(db, ctx, slot, pool, write, anchor, bucket)
     if selected is None:
-        return Story(None, None, "", "", phase, None, ctx.today_energy_kwh)
+        fallback = technical_context(ctx)
+        index, lines = render(fallback, key, preferred=0)
+        selected = fallback, index, lines, None
     c, index, lines, record = selected
     return Story(
         c.ident,

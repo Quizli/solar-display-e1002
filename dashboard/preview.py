@@ -25,7 +25,7 @@ def bounds(day):
 
 
 def synthetic(day, instant, scenario):
-    summer = scenario == "sunny-summer"
+    summer = scenario in ("sunny-summer", "cold-start")
     start, end = (5, 21) if summer else (8, 16)
     now = instant.astimezone(ZURICH)
     hour = now.hour + now.minute / 60
@@ -35,6 +35,9 @@ def synthetic(day, instant, scenario):
         maximum = 0
     energy = maximum * (1 - math.cos(progress * math.pi)) / 2
     power = maximum * math.sin(progress * math.pi) * math.pi / (2 * (end - start))
+    if scenario == "cold-start":
+        # A cumulative display can remain at zero after power becomes measurable.
+        energy = math.floor(energy * 20) / 20
     forecast = SunData(
         day,
         now.replace(hour=start, minute=0),
@@ -45,7 +48,17 @@ def synthetic(day, instant, scenario):
         "valid",
     )
     return LiveData(
-        instant.isoformat(), power, 2, 0, 0, 0, power - 2, energy, None, False, False
+        instant.isoformat(),
+        power,
+        2,
+        0,
+        0,
+        0,
+        power - 2,
+        energy,
+        1000 if scenario == "zero-production" else None,
+        False,
+        False,
     ), SunDataResult(forecast, "fresh", "synthetic")
 
 
@@ -77,7 +90,14 @@ def replay(first, last, scenario, path):
                 if scenario in ("milestone-collision", "counter-reset")
                 else "",
             )
-            bucket = bounds(first - timedelta(days=40))
+            bucket = bounds(
+                first if scenario == "cold-start" else first - timedelta(days=40)
+            )
+            if scenario == "zero-production":
+                prior, _ = synthetic(
+                    first - timedelta(days=1), bounds(first) - BUCKET, scenario
+                )
+                db.store_snapshot(prior)
         while cursor < bounds(last + timedelta(days=1)):
             local = cursor.astimezone(ZURICH)
             day = local.date()
@@ -146,6 +166,8 @@ def replay(first, last, scenario, path):
             yield dict(
                 timestamp=local.isoformat(),
                 phase=story["phase"],
+                freshness=view["freshness"],
+                yield_kwh=view["display"]["day_yield_kwh"],
                 family=story["family"],
                 insight=story["fact_id"],
                 branch=story["branch"],
@@ -163,7 +185,12 @@ def replay(first, last, scenario, path):
                 history_statement=history.get("statement"),
                 event=story["event_id"],
             )
-            previous, cursor = cursor, cursor + STEP
+            step = STEP
+            if scenario == "cold-start" and (
+                local.hour == 5 or local.hour == 6 and local.minute == 0
+            ):
+                step = BUCKET
+            previous, cursor = cursor, cursor + step
 
 
 def preview(args):
@@ -197,6 +224,11 @@ def preview(args):
                     ineligible_energy=counts["ineligible_energy"],
                     overflow=counts["overflow"],
                     slots=len(rows),
+                    empty_insights=sum(
+                        not r["insight"] or not r["statement"].strip() for r in rows
+                    ),
+                    missing_status=sum(r["insight"] == "MISSING" for r in rows),
+                    stale_status=sum(r["insight"] == "STALE" for r in rows),
                     concepts=len({r["insight"] for r in rows}),
                     variants=len(
                         {(r["insight"], r["branch"], r["variant"]) for r in rows}

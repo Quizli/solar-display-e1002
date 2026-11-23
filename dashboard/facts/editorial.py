@@ -105,6 +105,14 @@ def load(name, group):
                     "quantity": "quantity",
                 }[kind],
             }
+        if group == "energy" and row["type"] == "uses":
+            singular = row.get("singular_variants")
+            if not isinstance(singular, list) or len(singular) != len(variants):
+                raise ValueError(f"Missing singular forms for {ident}")
+            # Invariant nouns (e.g. Eiswürfel) legitimately reuse the plural text.
+            extra = [text for text in singular if text not in variants]
+            if extra:
+                branches["singular"] = extra
         for key, templates in branches.items():
             if name in HANDLERS:
                 fields = set(HANDLERS[name][ident][key].split())
@@ -230,27 +238,11 @@ def wrap(text, limit):
     return min(choices)[1:] if choices else None
 
 
-SINGULAR = dict(
-    Waschgänge="Waschgang",
-    Ladungen="Ladung",
-    Spülgänge="Spülgang",
-    Tumblerladungen="Tumblerladung",
-    Kühlschranktage="Kühlschranktag",
-    Tage="Tag",
-    Litern="Liter",
-    Racletteportionen="Racletteportion",
-    Portionen="Portion",
-    Suppenportionen="Suppenportion",
-    Ofengänge="Ofengang",
-    Hübe="Hub",
-    Aufstiege="Aufstieg",
-)
-SINGULAR.update({"Eco-Gänge": "Eco-Gang", "Pizza-Backrunden": "Pizza-Backrunde"})
-
-
 def render(candidate, slot, preferred=None):
     variants = candidate.row["variants"]
-    if isinstance(variants, dict):
+    if candidate.ident in ENERGY and candidate.values.get("count") == "1":
+        variants = candidate.row["singular_variants"]
+    elif isinstance(variants, dict):
         variants = variants[candidate.branch]
     first = (
         preferred
@@ -267,18 +259,6 @@ def render(candidate, slot, preferred=None):
                 and "darunter" in template
             ):
                 continue
-            if candidate.values.get("count") == "1":
-                for plural, singular in SINGULAR.items():
-                    template = template.replace(
-                        "{count} " + plural, "{count} " + singular
-                    )
-                template = template.replace(
-                    "wären rund {count} Spülgang", "wäre rund {count} Spülgang"
-                )
-                template = template.replace("wären mit", "wäre mit").replace(
-                    "liessen sich rund {count} Suppenportion",
-                    "liesse sich rund {count} Suppenportion",
-                )
             text = template.format_map(candidate.values)
             if (
                 candidate.ident == "SUNSHINE_OUTLOOK"

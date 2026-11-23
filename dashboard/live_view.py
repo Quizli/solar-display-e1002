@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import logging
 import math
@@ -254,11 +255,15 @@ def build_live_view(
             for r in day_aggregates
             if _aware_utc(r.bucket_start) < end
         ]
-        reliable = bool(
+        verified_yield = bool(
             current_daily
             and current_daily.complete
             and completed
             and database._qualify_record_day(chart_local_day, completed, start, end)
+        )
+        fact_context = replace(fact_context, complete_yield=verified_yield)
+        reliable = (
+            verified_yield
             and all(a[1] <= b[1] for a, b in zip(completed, completed[1:]))
             and current_energy >= completed[-1][1]
         )

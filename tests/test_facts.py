@@ -22,8 +22,9 @@ from dashboard.facts.models import FactContext
 from dashboard.facts.mornings import morning_candidates
 from dashboard.facts.selection import choose_insight, phase_for
 from dashboard.facts.statistics import history_candidates
+from dashboard.live_view import build_live_view
 from dashboard.preview import replay, synthetic
-from solar_data.storage import SolarDatabase
+from solar_data.storage import SolarDatabase, _utc_text
 from solar_data.timezones import ZURICH
 
 DAY = timedelta(days=1)
@@ -68,8 +69,91 @@ class SelectionTest(unittest.TestCase):
                 self.ctx, now_local=self.ctx.sunrise + timedelta(minutes=minutes)
             )
             self.assertEqual(phase_for(ctx), phase)
-        ctx = replace(self.ctx, now_local=self.ctx.sunset)
+        ctx = replace(self.ctx, now_local=self.ctx.sunset, complete_yield=True)
         self.assertEqual(self.choose(ctx).fact_id, "ZERO_DAY_COMPLETE")
+
+    def test_first_light_keeps_energy_slot_free_with_or_without_used_history(self):
+        for used in (False, True):
+            with SolarDatabase(":memory:") as db:
+                history = (
+                    history_candidates(
+                        {self.now.date() - DAY: 2.0, self.now.date() - 2 * DAY: 1.0},
+                        self.now.date(),
+                    )
+                    if used
+                    else []
+                )
+                if used:
+                    earlier = replace(
+                        self.ctx,
+                        now_local=self.now - timedelta(hours=1),
+                        solar_power_kw=0.15,
+                    )
+                    self.assertEqual(
+                        choose_insight(
+                            db, earlier, history, {}, [], False, True
+                        ).family,
+                        "history",
+                    )
+                for energy in (0, 0.05, None):
+                    ctx = replace(
+                        self.ctx, today_energy_kwh=energy, solar_power_kw=0.15
+                    )
+                    story = choose_insight(db, ctx, history, {}, [], False, True)
+                    self.assertEqual(story.fact_id, "TECH_CONTEXT")
+                    self.assertTrue(story.line_1)
+                    self.assertIsNone(db.get_fact_selection(hour_key(self.now)))
+                active = replace(ctx, today_energy_kwh=0.2, selection_energy_kwh=0.12)
+                story = choose_insight(db, active, history, {}, [], False, True)
+                self.assertIn(story.fact_id, ENERGY)
+                self.assertEqual(
+                    db.get_fact_selection(hour_key(self.now)).fact_id, story.fact_id
+                )
+
+    def test_incomplete_evening_and_unavailable_yield_do_not_claim_zero(self):
+        for energy in (0, 0.05, None):
+            ctx = replace(self.ctx, now_local=self.ctx.sunset, today_energy_kwh=energy)
+            self.assertEqual(self.choose(ctx).fact_id, "TECH_CONTEXT")
+        ctx = replace(self.ctx, today_energy_kwh=None)
+        self.assertNotIn(
+            "WAITING_STATUS",
+            {
+                c.ident
+                for c in morning_candidates(ctx, [], {}, "morning_waiting", False)
+            },
+        )
+
+    def test_daylight_elapsed_minutes_and_dst(self):
+        for start, end, expected in (
+            (
+                datetime(2026, 6, 1, 6, 24, tzinfo=ZURICH),
+                datetime(2026, 6, 1, 21, 14, tzinfo=ZURICH),
+                "14 Stunden 50 Minuten",
+            ),
+            (
+                datetime(2026, 3, 29, 1, 59, tzinfo=ZURICH),
+                datetime(2026, 3, 29, 4, 0, tzinfo=ZURICH),
+                "1 Stunde 1 Minute",
+            ),
+            (
+                datetime(2026, 10, 25, 2, 3, tzinfo=ZURICH, fold=0),
+                datetime(2026, 10, 25, 2, 5, tzinfo=ZURICH, fold=1),
+                "1 Stunde 2 Minuten",
+            ),
+        ):
+            ctx = replace(
+                self.ctx, now_local=start, sunrise=start, sunset=end, sunshine_hours=2
+            )
+            items = {
+                c.ident: c
+                for c in morning_candidates(ctx, [], {}, "morning_waiting", False)
+            }
+            self.assertEqual(items["DAYLIGHT"].values["duration"], expected)
+            self.assertEqual(
+                items["DAYLIGHT"].values["sunrise"], start.strftime("%H:%M")
+            )
+            self.assertEqual(items["DAYLIGHT"].values["sunset"], end.strftime("%H:%M"))
+            self.assertEqual(items["SUNSHINE_OUTLOOK"].values["sunshine"], "2,0")
 
     def test_alias_and_retired_cutover(self):
         for ident in ("N01", "M03"):
@@ -191,13 +275,17 @@ class SelectionTest(unittest.TestCase):
         ]
         self.assertEqual(selected.count("NATIONAL_DAY"), 2)
 
-    def events(self, now, energy=0, total=None, history=None, reliable=True):
+    def events(
+        self, now, energy=0, total=None, history=None, reliable=True, verified=False
+    ):
         history = (
             history
             if history is not None
             else {self.now.date() - i * DAY: 20 * i for i in (1, 2)}
         )
-        ctx = replace(self.ctx, now_local=now, today_energy_kwh=energy)
+        ctx = replace(
+            self.ctx, now_local=now, today_energy_kwh=energy, complete_yield=verified
+        )
         sample, _ = synthetic(now.date(), now, "sunny-summer")
         return {
             c.ident: c
@@ -220,6 +308,139 @@ class SelectionTest(unittest.TestCase):
         self.assertEqual(later["DAILY_RECORD"].values["energy"], "121,0")
         self.assertEqual(later["PRODUCTION_BARRIER"].values["threshold"], 120)
         self.assertFalse(self.events(self.now + DAY, 0))
+
+    def test_verified_correction_invalidation_and_recovery_across_restart(self):
+        history = {self.now.date() - DAY: 100.04, self.now.date() - 2 * DAY: 98.0}
+        with tempfile.TemporaryDirectory() as folder:
+            path = str(Path(folder) / "review.db")
+            self.db = SolarDatabase(path)
+            self.events(self.now, 99, history=history)
+            peak = self.now + timedelta(hours=2)
+            event = self.events(peak, 142, history=history)["DAILY_RECORD"]
+            self.assertEqual(event.values["old_record"], "100,0")
+            # A partial integration can neither change the record nor invalidate it.
+            self.assertEqual(
+                self.events(
+                    peak + timedelta(minutes=1), 90, history=history, reliable=False
+                )["DAILY_RECORD"].values["energy"],
+                "142,0",
+            )
+            revised = self.events(
+                peak + timedelta(minutes=2),
+                125,
+                history=history,
+                reliable=False,
+                verified=True,
+            )
+            self.assertEqual(revised["DAILY_RECORD"].values["energy"], "125,0")
+            self.assertEqual(revised["PRODUCTION_BARRIER"].values["threshold"], 120)
+            self.assertEqual(
+                self.events(
+                    peak + timedelta(minutes=3),
+                    90,
+                    history=history,
+                    reliable=False,
+                    verified=True,
+                ),
+                {},
+            )
+            self.db.close()
+            with SolarDatabase(path) as self.db:
+                self.assertEqual(
+                    self.events(
+                        peak + timedelta(minutes=5),
+                        90,
+                        history=history,
+                        reliable=False,
+                        verified=True,
+                    ),
+                    {},
+                )
+                # Frozen full-precision baseline: 100.13 is below 100.04 + 0.1.
+                self.assertNotIn(
+                    "DAILY_RECORD",
+                    self.events(peak + timedelta(hours=1), 100.13, history=history),
+                )
+                resumed = self.events(
+                    peak + timedelta(hours=3),
+                    142.1,
+                    history=history,
+                    reliable=False,
+                    verified=True,
+                )
+                self.assertEqual(resumed["DAILY_RECORD"].reference, event.reference)
+                self.assertEqual(
+                    resumed["PRODUCTION_BARRIER"].reference, "PRODUCTION_BARRIER:140"
+                )
+                self.assertEqual(
+                    self.db.connection.execute(
+                        "SELECT count(*) FROM milestone_events WHERE event_key='PRODUCTION_BARRIER:140'"
+                    ).fetchone()[0],
+                    1,
+                )
+
+    def test_publisher_reconciles_a_verified_counter_with_an_inflated_chart_bucket(
+        self,
+    ):
+        midnight = self.now.replace(hour=0, minute=0)
+        bucket = midnight - 2 * DAY
+        peak = self.now + timedelta(hours=2)
+        while bucket <= peak:
+            value = 100 if bucket < midnight else 142 if bucket == peak else 0
+            self.db.connection.execute(
+                "INSERT INTO aggregates_5m VALUES (?,0,0,0,0,0,0,?,1,0,0)",
+                (_utc_text(bucket), value),
+            )
+            bucket += timedelta(minutes=5)
+
+        def publish(now, daily, total):
+            sample, sun = synthetic(now.date(), now, "sunny-summer")
+            self.db.store_snapshot(
+                replace(sample, energy_today_kwh=daily, energy_total_kwh=total)
+            )
+            return build_live_view(self.db, now, sun_result=sun)
+
+        publish(midnight - timedelta(minutes=5), 100, 1000)
+        publish(self.now, 99, None)
+        event = publish(peak, 142, None)
+        self.assertEqual(event["story_status"]["fact_id"], "DAILY_RECORD")
+        corrected = publish(peak + timedelta(minutes=5), 90, 1090)
+        self.assertEqual(corrected["display"]["day_yield_kwh"], 90)
+        self.assertIsNone(corrected["story_status"]["event_id"])
+        self.assertEqual(
+            self.db.aggregates_for_local_day(self.now.date())[-1].energy_today_kwh, 142
+        )
+
+    def test_publisher_requires_complete_zero_yield_after_sunset(self):
+        evening = self.now.replace(hour=22)
+        sample, sun = synthetic(evening.date(), evening, "zero-production")
+        self.db.store_snapshot(replace(sample, energy_total_kwh=None))
+        partial = build_live_view(self.db, evening, sun_result=sun)
+        self.assertEqual(
+            partial["daily_energy"], {"source": "solar_integration", "complete": False}
+        )
+        self.assertEqual(partial["story_status"]["fact_id"], "TECH_CONTEXT")
+        rows = list(replay(evening.date(), evening.date(), "zero-production", None))
+        self.assertEqual(rows[-1]["insight"], "ZERO_DAY_COMPLETE")
+
+    def test_cold_start_replay_has_no_empty_first_light_slot(self):
+        rows = list(replay(date(2026, 6, 2), date(2026, 6, 2), "cold-start", None))
+        first_light = [
+            r
+            for r in rows
+            if r["phase"] == "active_production" and "T05:" in r["timestamp"]
+        ]
+        self.assertTrue(all(r["statement"].strip() and r["insight"] for r in rows))
+        self.assertTrue(all(r["history"] is None for r in rows))
+        self.assertEqual(first_light[0]["yield_kwh"], 0)
+        self.assertEqual(first_light[0]["insight"], "TECH_CONTEXT")
+        self.assertTrue(
+            any(
+                r["yield_kwh"] == 0.05 and r["insight"] == "TECH_CONTEXT"
+                for r in first_light
+            )
+        )
+        self.assertIn(first_light[-1]["insight"], ENERGY)
 
     def test_lifetime_real_crossing_gap_and_reset(self):
         with patch.dict("os.environ", SOLAR_COMMISSIONING_TOTAL_KWH="500"):

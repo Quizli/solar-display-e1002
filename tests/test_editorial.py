@@ -12,8 +12,50 @@ class EditorialTests(unittest.TestCase):
                 if candidate:
                     for variant in (0, 1):
                         actual, lines = render(candidate, "slot", variant)
+                        self.assertEqual(actual, variant, (row["id"], energy))
                         self.assertTrue(both_lines_fit(lines, 510), row["id"])
                         self.assertNotIn("{", "".join(lines))
+
+    def test_each_one_use_variant_and_its_grammar(self):
+        expected = {
+            "washing_machine": ("1 Waschgang", "1 Ladung"),
+            "dishwasher": ("wäre rund 1 Spülgang", "1 Eco-Gang"),
+            "dryer": ("1 Tumblerladung", "etwa einmal"),
+            "fridge": ("1 Kühlschranktag", "1 Tag aus"),
+            "espresso": ("liesse sich rund 1 Espresso", "1 Espresso bei"),
+            "kettle": ("liesse sich rund 1 Liter", "1 Liter Wasser"),
+            "toast": ("1 Scheibe rösten", "1 geröstete Toastscheibe"),
+            "raclette": ("1 Racletteportion", "1 Portion Raclette"),
+            "soup": ("liesse sich rund 1 Suppenportion", "1 Suppenportion"),
+            "oven_pizza": ("1 Ofengang", "wäre mit"),
+            "ice_cubes": ("1 Eiswürfel", "1 Würfel"),
+            "phone_charge": ("1 Smartphone-Ladung", "etwa einmal"),
+            "tablet_charge": ("etwa einmal", "1 Tablet-Ladung"),
+            "ereader_charge": ("1 E-Reader-Ladung", "etwa einmal"),
+            "powerbank_charge": (
+                "1 Powerbank-Ladung",
+                "liesse sich rund 1 Powerbank mit",
+            ),
+            "lift_trip": ("1 kurze Liftfahrt", "1 Fahrt."),
+            "lift_tonne": ("etwa einmal", "1 Hub"),
+            "sprint_car": ("etwa einmal", "1 Start von"),
+            "lift_person_alps": ("etwa einmal", "1 Aufstieg"),
+        }
+        self.assertEqual(
+            set(expected), {r["id"] for r in ENERGY.values() if r["type"] == "uses"}
+        )
+        for ident, fragments in expected.items():
+            row = ENERGY[ident]
+            # The hourly eligibility anchor and the live display value can differ.
+            candidate = energy_candidate(
+                row, max(row["min_kwh"], row["kwh_per_unit"]), row["kwh_per_unit"]
+            )
+            self.assertEqual(candidate.values["count"], "1")
+            for preferred, fragment in enumerate(fragments):
+                index, lines = render(candidate, "test", preferred)
+                self.assertEqual(index, preferred)
+                self.assertIn(fragment, " ".join(lines))
+                self.assertTrue(both_lines_fit(lines, 510))
 
     def test_physical_assumptions(self):
         self.assertEqual(
