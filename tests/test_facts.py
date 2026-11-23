@@ -1,280 +1,286 @@
+import tempfile
 import unittest
-from datetime import datetime
+from dataclasses import replace
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from unittest.mock import patch
 
-from dashboard.facts.catalog import (FACTS, FACTS_BY_ID,
-                                     has_eligible_fact_for_energy, render_d01)
-from dashboard.facts.engine import (_render, build_hourly_fact_plan,
-                                    build_story_from_context, determine_phase,
-                                    hour_key, select_fact_for_hour)
-from dashboard.facts.formatting import format_fact_number
+from dashboard.facts.calendar_rules import calendar_candidates, easter
+from dashboard.facts.editorial import (
+    ALIASES,
+    ENERGY,
+    HISTORY,
+    duration,
+    energy_candidate,
+    number,
+    render,
+    wrap,
+)
+from dashboard.facts.engine import hour_key
+from dashboard.facts.milestones import active_events
 from dashboard.facts.models import FactContext
+from dashboard.facts.mornings import morning_candidates
+from dashboard.facts.selection import choose_insight, phase_for
+from dashboard.facts.statistics import history_candidates
+from dashboard.preview import replay, synthetic
+from solar_data.storage import SolarDatabase
 from solar_data.timezones import ZURICH
 
+DAY = timedelta(days=1)
 
-class FactsEngineTest(unittest.TestCase):
-    _AUTO = object()
 
-    def context(self, hour=12, today=25, yesterday=20, power=1,
-                sunrise_hour=6, sunset_hour=21, weather=None, day=25,
-                selection_energy=_AUTO, previous_selection_energy=_AUTO,
-                anchors=None):
-        now = datetime(2026, 7, day, hour, tzinfo=ZURICH)
-        sunrise = now.replace(hour=sunrise_hour) if sunrise_hour is not None else None
-        sunset = now.replace(hour=sunset_hour) if sunset_hour is not None else None
-        selection = today if selection_energy is self._AUTO else selection_energy
-        previous = selection if previous_selection_energy is self._AUTO else previous_selection_energy
-        return FactContext(now, sunrise, sunset, today, yesterday, power, weather,
-                           selection, previous, anchors or {})
-
-    def anchored_context(self, day, hour, anchors, today=None):
-        now = datetime(2026, 7, day, hour, tzinfo=ZURICH)
-        mapping = {hour_key(now.replace(hour=item_hour, minute=0)): energy
-                   for item_hour, energy in anchors.items()}
-        return self.context(day=day, hour=hour, today=today or anchors[hour],
-                            selection_energy=anchors.get(hour), anchors=mapping)
-
-    def test_daily_phases_and_energy_periods(self):
-        cases = (
-            (self.context(5), ("pre_sunrise", "yesterday")),
-            (self.context(7, today=0, power=0), ("morning_waiting", "yesterday")),
-            (self.context(8, today=0, power=0), ("zero_production_day", None)),
-            (self.context(8, today=.1, power=0), ("active_production", "today")),
-            (self.context(8, today=0, power=.1), ("active_production", "today")),
-            (self.context(22), ("after_sunset", "today")),
+class SelectionTest(unittest.TestCase):
+    def setUp(self):
+        self.now = datetime(2026, 7, 25, 8, 5, tzinfo=ZURICH)
+        self.ctx = FactContext(
+            self.now,
+            self.now.replace(hour=6),
+            self.now.replace(hour=20),
+            0,
+            None,
+            0,
+            None,
         )
-        for context, expected in cases:
-            with self.subTest(expected=expected):
-                self.assertEqual(determine_phase(context), expected)
+        self.db = SolarDatabase(":memory:")
+        self.addCleanup(self.db.close)
 
-    def test_missing_sun_uses_clock_fallback(self):
-        self.assertEqual(determine_phase(self.context(5, sunrise_hour=None))[1], "yesterday")
-        self.assertEqual(determine_phase(self.context(12, today=0, power=0,
-                                                       sunrise_hour=None))[0], "morning_waiting")
-        self.assertEqual(determine_phase(self.context(22, sunrise_hour=None))[0], "after_sunset")
+    def choose(self, ctx):
+        return choose_insight(self.db, ctx, [], {}, [], False, True)
 
-    def test_selection_is_stable_and_period_word_is_correct(self):
-        first = build_story_from_context(self.context())
-        self.assertEqual(first, build_story_from_context(self.context()))
-        self.assertIn("heutigen", first.line_1)
-        self.assertIn("heutigen", FACTS_BY_ID["D01"].render(25, "heutigen")[0])
-        self.assertIn("gestrigen", FACTS_BY_ID["D01"].render(25, "gestrigen")[0])
-
-    def test_selection_does_not_use_changing_energy_in_seed(self):
-        # These values have the same eligible set; only their rendered number differs.
-        first = build_story_from_context(self.context(today=75))
-        changed = build_story_from_context(self.context(today=76))
-        self.assertEqual(first.fact_id, changed.fact_id)
-
-    def test_selection_remains_stable_across_activation_thresholds(self):
-        for before, after in ((.9, 1.1), (4.9, 5.1), (9.9, 10.1),
-                              (24.9, 25.1), (49.9, 50.1), (99.9, 100.1),
-                              (119.9, 120.1)):
-            first = build_story_from_context(self.context(today=before, selection_energy=before))
-            later = build_story_from_context(self.context(today=after, selection_energy=before))
-            selected = FACTS_BY_ID.get(first.fact_id)
-            if selected and selected.min_kwh <= after <= selected.max_kwh:
-                with self.subTest(before=before, after=after, fact=first.fact_id):
-                    self.assertEqual(first.fact_id, later.fact_id)
-
-    def test_zero_energy_never_creates_conversion_fact(self):
-        story = build_story_from_context(self.context(12, today=0, power=1))
-        self.assertIn(story.fact_id, {"TECH"})
-
-    def test_late_hours_do_not_repeat_one_exhausted_selection_forever(self):
-        stories = [build_story_from_context(self.context(hour, today=75))
-                   for hour in range(18, 24)]
-        self.assertGreater(len({story.fact_id for story in stories}), 1)
-
-    def test_adjacent_hours_avoid_same_fact_and_family(self):
-        stories = [build_story_from_context(self.context(hour=h, today=75))
-                   for h in range(6, 24)]
-        for previous, current in zip(stories, stories[1:]):
-            if previous.family != "technical" and current.family != "technical":
-                self.assertNotEqual(previous.fact_id, current.fact_id)
-                self.assertNotEqual(previous.family, current.family)
-
-    def test_adjacent_hours_with_changing_ranges_use_alternatives(self):
-        energies = (1, 5, 10, 25, 50, 75, 100, 121)
-        stories = [build_story_from_context(self.context(hour=hour, today=energy))
-                   for hour, energy in zip(range(8, 16), energies)]
-        for previous, current in zip(stories, stories[1:]):
-            if previous.family != "technical" and current.family != "technical":
-                self.assertNotEqual(previous.fact_id, current.fact_id)
-
-    def test_higher_minimum_facts_are_reachable(self):
-        selected_ids = {
-            build_story_from_context(self.context(
-                day=day, hour=hour, today=75, selection_energy=75,
-                previous_selection_energy=70,
-            )).fact_id
-            for day in range(1, 15) for hour in range(8, 20)
-        }
-        expected = {"D02", "M03", "V01", "V03", "V09", "U01", "U02",
-                    "X03", "X11", "CMB07"}
-        self.assertTrue(expected <= selected_ids, expected - selected_ids)
-
-    def test_anchor_keeps_id_stable_while_display_value_changes(self):
-        first = build_story_from_context(self.context(today=54.3, selection_energy=54.3))
-        later = build_story_from_context(self.context(today=78.9, selection_energy=54.3))
-        self.assertEqual(first.fact_id, later.fact_id)
+    def test_phase_transition_creates_two_stable_slots(self):
+        morning = self.choose(self.ctx)
+        active = replace(self.ctx, today_energy_kwh=0.5, solar_power_kw=0.1)
+        first = self.choose(active)
+        later = self.choose(replace(active, today_energy_kwh=5))
+        self.assertEqual(morning.family, "morning")
+        self.assertIn(first.fact_id, ENERGY)
+        self.assertEqual((first.fact_id, first.variant), (later.fact_id, later.variant))
         self.assertNotEqual((first.line_1, first.line_2), (later.line_1, later.line_2))
+        self.assertEqual(len(self.db.fact_selections_for_local_day(self.now.date())), 2)
 
-    def test_current_and_previous_hours_use_their_own_anchors(self):
-        context = self.context(today=55, selection_energy=55,
-                               previous_selection_energy=24)
-        previous_hour = context.now_local.replace(hour=11, minute=0)
-        previous = select_fact_for_hour(context, previous_hour, 24, 24)
-        story = build_story_from_context(context)
-        self.assertIsNotNone(previous)
-        self.assertNotEqual(story.fact_id, previous[0].fact_id)
-        self.assertNotEqual(story.family, previous[0].family)
+    def test_late_waiting_and_zero(self):
+        for minutes, phase in (
+            (-1, "pre_sunrise"),
+            (89, "morning_waiting"),
+            (90, "zero_production_day"),
+        ):
+            ctx = replace(
+                self.ctx, now_local=self.ctx.sunrise + timedelta(minutes=minutes)
+            )
+            self.assertEqual(phase_for(ctx), phase)
+        ctx = replace(self.ctx, now_local=self.ctx.sunset)
+        self.assertEqual(self.choose(ctx).fact_id, "ZERO_DAY_COMPLETE")
 
-    def test_missing_current_hour_anchor_uses_transition_fallback(self):
-        story = build_story_from_context(self.context(
-            hour=12, today=55, selection_energy=None,
-            previous_selection_energy=24,
-        ))
-        self.assertEqual(story.fact_id, "TECH")
+    def test_alias_and_retired_cutover(self):
+        for ident in ("N01", "M03"):
+            now = self.now if ident == "N01" else self.now + DAY
+            key = hour_key(now)
+            self.db.store_fact_selection(key, now, ident, "old", 30)
+            ctx = replace(self.ctx, now_local=now, today_energy_kwh=30)
+            selected = self.choose(ctx)
+            self.assertIn(selected.fact_id, ENERGY)
+            if ident == "N01":
+                self.assertEqual(selected.fact_id, ALIASES[ident])
+            self.assertEqual(self.db.get_fact_selection(key).fact_id, ident)
 
-    def test_known_july_first_sequence_uses_actual_plan_predecessor(self):
-        anchors = {hour: 1 for hour in range(6, 14)}
-        story_12 = build_story_from_context(self.anchored_context(1, 12, anchors))
-        story_13 = build_story_from_context(self.anchored_context(1, 13, anchors))
-        self.assertNotEqual(story_12.fact_id, story_13.fact_id)
-        self.assertNotEqual(story_12.family, story_13.family)
+    def test_recent_24_and_previous_family(self):
+        stories = [
+            self.choose(
+                replace(
+                    self.ctx,
+                    now_local=self.now + timedelta(hours=h),
+                    today_energy_kwh=25,
+                    selection_energy_kwh=25,
+                )
+            )
+            for h in range(36)
+        ]
+        for i, story in enumerate(stories):
+            self.assertNotIn(
+                story.fact_id, [s.fact_id for s in stories[max(0, i - 24) : i]]
+            )
+            if i:
+                self.assertNotEqual(story.family, stories[i - 1].family)
 
-    def test_sequential_plans_avoid_adjacency_across_days_and_energies(self):
-        for day in range(1, 15):
-            for energy in (1, 5, 10, 25, 50, 75, 100, 121, 150):
-                anchors = {hour: energy for hour in range(6, 24)}
-                stories = [build_story_from_context(
-                    self.anchored_context(day, hour, anchors)
-                ) for hour in range(6, 24)]
-                for previous, current in zip(stories, stories[1:]):
-                    if previous.family != "technical" and current.family != "technical":
-                        self.assertNotEqual(previous.fact_id, current.fact_id)
-                        self.assertNotEqual(previous.family, current.family)
+    def test_dates_and_fold(self):
+        for year, expected in ((2026, date(2026, 4, 5)), (2027, date(2027, 3, 28))):
+            self.assertEqual(easter(year), expected)
+            ids = lambda day: {c.ident for c in calendar_candidates(day, True)}
+            self.assertIn("GOOD_FRIDAY", ids(expected - 2 * DAY))
+            self.assertIn("ASCENSION", ids(expected + 39 * DAY))
+        for day, ident in (
+            (date(2026, 3, 29), "DST_START"),
+            (date(2027, 10, 31), "DST_END"),
+            (date(2026, 9, 23), "AUTUMN_EQUINOX"),
+            (date(2027, 12, 22), "WINTER_SOLSTICE"),
+        ):
+            self.assertIn(ident, ids(day))
+            self.assertNotIn(ident, ids(day - DAY))
+        fold = datetime(2026, 10, 25, 2, tzinfo=ZURICH)
+        self.assertNotEqual(hour_key(fold), hour_key(fold.replace(fold=1)))
 
-    def test_plan_uses_each_hours_real_anchor(self):
-        anchors = {8: 1, 9: 5, 10: 10, 11: 25, 12: 50, 13: 75}
-        context = self.anchored_context(25, 13, anchors)
-        hours = [context.now_local.replace(hour=hour, minute=0) for hour in anchors]
-        plan = build_hourly_fact_plan(context, hours, context.selection_energy_by_hour)
-        for local_hour in hours:
-            fact, _ = plan[hour_key(local_hour)]
-            energy = anchors[local_hour.hour]
-            self.assertLessEqual(fact.min_kwh, energy)
-            self.assertGreaterEqual(fact.max_kwh, energy)
-
-    def test_midnight_and_folds_have_distinct_hour_keys(self):
-        previous = datetime(2026, 7, 25, 23, tzinfo=ZURICH)
-        current = datetime(2026, 7, 26, 0, tzinfo=ZURICH)
-        self.assertNotEqual(hour_key(previous), hour_key(current))
-        autumn_0 = datetime(2026, 10, 25, 2, tzinfo=ZURICH, fold=0)
-        autumn_1 = datetime(2026, 10, 25, 2, tzinfo=ZURICH, fold=1)
-        self.assertNotEqual(hour_key(autumn_0), hour_key(autumn_1))
-
-    def test_energy_ranges_filter_catalog(self):
-        at_five = {fact.fact_id for fact in FACTS if fact.min_kwh <= 5 <= fact.max_kwh}
-        self.assertIn("D01", at_five)
-        self.assertNotIn("M01", at_five)
-        self.assertNotIn("X01", at_five)
-        at_150 = {fact.fact_id for fact in FACTS if fact.min_kwh <= 150 <= fact.max_kwh}
-        self.assertIn("X01", at_150)
-        self.assertNotIn("D01", at_150)
-
-    def test_fact_eligibility_helper_uses_catalog_ranges(self):
-        self.assertFalse(has_eligible_fact_for_energy(None))
-        self.assertFalse(has_eligible_fact_for_energy(.2))
-        self.assertTrue(has_eligible_fact_for_energy(1))
-        self.assertTrue(has_eligible_fact_for_energy(160))
-        self.assertFalse(has_eligible_fact_for_energy(161))
-
-    def test_every_catalog_template_fits_at_representative_energies(self):
-        for energy in (1, 5, 25, 75, 150, 160):
-            for fact in FACTS:
-                with self.subTest(energy=energy, fact=fact.fact_id):
-                    self.assertIsNotNone(_render(fact, energy, "heutigen"))
-
-    def test_swiss_number_formatting_and_large_numbers(self):
-        expected = ((1.4, "1,4"), (4401, "4’400"), (125049, "125’000"),
-                    (1_200_000, "1,2 Millionen"),
-                    (1_100_000_000, "1,1 Milliarden"))
-        for value, text in expected:
-            with self.subTest(value=value):
-                self.assertEqual(format_fact_number(value), text)
-
-    def test_all_conversion_factors_at_75_kwh(self):
-        expected = {
-            "D01": ("4’400",), "D02": ("6’750", "km"),
-            "K01": ("5’000",), "K03": ("15’000",), "K08": ("250",),
-            "M01": ("600",), "M03": ("1,08 Milliarden",),
-            "V01": ("10’700",), "V03": ("577",), "V07": ("2’500",),
-            "V09": ("21",), "H01": ("204",), "U01": ("2,1 Jahre",),
-            "U02": ("78 Tage",), "X01": ("0,27 Sekunden",),
-            "X03": ("18 %",), "X11": ("3,94 Sekunden",),
-            "CMB07": ("103 Jahre", "0,27 Sekunden"),
+    def test_forecast_and_daylight_are_distinct(self):
+        ctx = replace(
+            self.ctx,
+            sunshine_hours=1.5,
+            weather_code=45,
+            previous_daylight_seconds=14 * 3600 + 180,
+        )
+        candidates = {
+            c.ident: c
+            for c in morning_candidates(ctx, [], {}, "morning_waiting", False)
         }
-        for fact_id, fragments in expected.items():
-            text = " ".join(FACTS_BY_ID[fact_id].render(75, "heutigen"))
-            with self.subTest(fact=fact_id):
-                for fragment in fragments:
-                    self.assertIn(fragment, text)
+        self.assertEqual(candidates["DAYLIGHT"].values["duration"], "14 Stunden")
+        self.assertEqual(
+            candidates["DAYLIGHT_CHANGE"].values["delta_minutes"], "3 Minuten"
+        )
+        self.assertEqual(candidates["WEATHER_OUTLOOK"].branch, "fog")
+        self.assertEqual(candidates["SUNSHINE_OUTLOOK"].branch, "very_low")
 
-    def test_iphone_rounding_at_small_and_large_yields(self):
-        for energy, expected in ((1, "59"), (5, "290"), (25, "1’500"),
-                                 (75, "4’400"), (120, "7’100")):
-            with self.subTest(energy=energy):
-                self.assertIn(expected, " ".join(render_d01(energy, "heutigen")))
+    def test_formatting_and_cutoffs(self):
+        self.assertEqual(number(1234.25, 2), "1’234,25")
+        self.assertEqual(duration(0.003), "3 Millisekunden")
+        self.assertEqual(duration(86400), "1 Tag")
+        self.assertEqual(duration(2 * 365 * 86400), "2 Jahre")
+        for energy in (None, 0, -1, float("nan"), float("inf")):
+            self.assertIsNone(energy_candidate(ENERGY["phone_charge"], energy, energy))
+        self.assertEqual(wrap("Ein Satz.", 490), ("Ein Satz.", ""))
+        self.assertIsNone(wrap("M" * 46, 510))
+        c = energy_candidate(ENERGY["washing_machine"], 0.5, 0.5)
+        self.assertIn("1 Waschgang", " ".join(render(c, "slot", 0)[1]))
 
-    def test_catalog_has_correct_grammar_and_no_punchlines(self):
-        catalog_text = " ".join(" ".join(fact.render(75, "heutigen")) for fact in FACTS)
-        for forbidden in ("Der heutigen Solarertrag", "Der gestrigen Solarertrag",
-                          "Eiswürfeln", "Der Daumen hätte", "ausdauernde Party",
-                          "Teilchenphysik spielt", "Saubere Wäsche", "Elektrisch unterwegs"):
-            self.assertNotIn(forbidden, catalog_text)
+    def test_history_handlers_and_denominators(self):
+        day = date(2026, 7, 25)
+        data = {day - i * DAY: float((i * 17) % 130) for i in range(1, 65)}
+        seen = set()
+        for recent in (
+            [115, 123, 125, 106, 93, 28, 51],
+            [9, 110, 111, 112, 2, 1, 3],
+            [0, 0, 10, 12, 16, 18, 19],
+        ):
+            for i, v in enumerate(recent, 1):
+                data[day - i * DAY] = v
+            for c in history_candidates(data, day):
+                seen.add(c.ident)
+                self.assertIsNotNone(render(c, "slot"), c.ident)
+                if c.ident == "HIST_7DAY_TOTAL":
+                    self.assertEqual(c.values["energy"], number(sum(recent)))
+                if c.ident == "HIST_YESTERDAY" and recent[1] == 0:
+                    self.assertEqual(c.meta["direction"], "neutral")
+                    self.assertIsNone(c.meta["difference_percent"])
+        self.assertEqual(seen, set(HISTORY))
+        del data[day - DAY]
+        ids = {c.ident for c in history_candidates(data, day)}
+        self.assertFalse(
+            ids & {"HIST_YESTERDAY", "HIST_STREAK_END", "HIST_MONTH_TO_DATE"}
+        )
 
-    def test_long_dynamic_hamster_text_fits(self):
-        lines, used_short = _render(FACTS_BY_ID["M03"], 150, "heutigen")
-        self.assertFalse(used_short)
-        self.assertEqual(lines, ("Für die heutigen 150 kWh wären rund",
-                                 "2,16 Milliarden Hamsterrad-Runden nötig."))
+    def test_calendar_quota(self):
+        now = datetime(2026, 8, 1, 4, tzinfo=ZURICH)
+        selected = [
+            self.choose(
+                replace(
+                    self.ctx,
+                    now_local=now + timedelta(hours=h),
+                    sunrise=None,
+                    sunset=None,
+                    today_energy_kwh=0 if h < 4 else 20,
+                )
+            ).fact_id
+            for h in range(18)
+        ]
+        self.assertEqual(selected.count("NATIONAL_DAY"), 2)
 
-    def test_cloud_status_does_not_claim_weather_causation(self):
-        story = build_story_from_context(self.context(9, today=0, power=0, weather=3))
-        self.assertEqual(story.fact_id, "ZERO_WEATHER")
-        self.assertNotIn("wegen", story.line_1 + story.line_2)
+    def events(self, now, energy=0, total=None, history=None, reliable=True):
+        history = (
+            history
+            if history is not None
+            else {self.now.date() - i * DAY: 20 * i for i in (1, 2)}
+        )
+        ctx = replace(self.ctx, now_local=now, today_energy_kwh=energy)
+        sample, _ = synthetic(now.date(), now, "sunny-summer")
+        return {
+            c.ident: c
+            for c in active_events(
+                self.db,
+                ctx,
+                history,
+                True,
+                replace(sample, energy_total_kwh=total),
+                reliable,
+            )[0]
+        }
 
-    def test_fog_has_its_own_status(self):
-        story = build_story_from_context(self.context(9, today=0, power=0, weather=45))
-        self.assertIn("neblig", story.line_1)
+    def test_running_record_and_barrier(self):
+        self.assertFalse(self.events(self.now, 30))
+        self.assertFalse(self.events(self.now, 150, reliable=False))
+        active = self.events(self.now + timedelta(minutes=35), 41)
+        self.assertEqual(active["DAILY_RECORD"].values["old_record"], "40,0")
+        later = self.events(self.now + timedelta(hours=5), 121)
+        self.assertEqual(later["DAILY_RECORD"].values["energy"], "121,0")
+        self.assertEqual(later["PRODUCTION_BARRIER"].values["threshold"], 120)
+        self.assertFalse(self.events(self.now + DAY, 0))
 
-    def test_zero_production_after_sunset_is_a_completed_day(self):
-        context = self.context(22, today=0, power=0)
-        self.assertEqual(determine_phase(context), ("after_sunset", "today"))
-        story = build_story_from_context(context)
-        self.assertEqual(story.fact_id, "ZERO_DAY_COMPLETE")
-        text = story.line_1 + story.line_2
-        self.assertNotIn("Morgen ist", text)
-        self.assertNotIn("noch nicht angelaufen", text)
+    def test_lifetime_real_crossing_gap_and_reset(self):
+        with patch.dict("os.environ", SOLAR_COMMISSIONING_TOTAL_KWH="500"):
+            self.assertFalse(self.events(self.now, total=2499.9))
+            now = self.now + timedelta(seconds=30)
+            self.assertIn("LIFETIME_ENERGY", self.events(now, total=2500))
+            self.assertEqual(
+                self.events(now, total=2500)["LIFETIME_ENERGY"].reference,
+                "LIFETIME_ENERGY:2000",
+            )
+            self.assertFalse(self.events(now + 8 * DAY, total=5510))
+            self.assertFalse(self.events(now + 9 * DAY, total=500))
+            self.assertFalse(self.events(now + 10 * DAY, total=10500))
 
+    def test_completed_day_milestones_use_only_yesterday(self):
+        today = self.now.date()
+        history = {today - i * DAY: 110 for i in range(1, 11)}
+        self.assertFalse(self.events(self.now - DAY, history={}))
+        active = self.events(self.now, history=history)
+        self.assertEqual(active["HIGH_YIELD_COUNT"].values["count"], 10)
+        self.assertEqual(active["STREAK_RECORD"].values["days"], 10)
+        self.assertNotIn("HIGH_YIELD_STREAK", active)
+        self.assertFalse(self.events(self.now + DAY, history=history))
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_streak_threshold_after_a_longer_run(self):
+        day = self.now.date()
+        history = {day - i * DAY: 110 for i in (1, 2, 3, 9, 10, 11, 12)}
+        self.events(self.now - DAY, history={})
+        active = self.events(self.now, history=history)
+        self.assertEqual(active["HIGH_YIELD_STREAK"].branch, "d3")
+        self.assertNotIn("STREAK_RECORD", active)
 
-class ExpandedCatalogTest(unittest.TestCase):
-    def test_catalog_size_and_required_energy_pools(self):
-        from dashboard.facts.catalog import FACTS
-        self.assertGreaterEqual(len(FACTS), 30)
-        required = {1: 10, 5: 15, 25: 22, 80: 22, 121: 16, 142.2: 16, 160: 16}
-        for energy, minimum in required.items():
-            with self.subTest(energy=energy):
-                self.assertGreaterEqual(sum(f.min_kwh <= energy <= f.max_kwh for f in FACTS), minimum)
+    def test_lifetime_first_valid_sample_and_impossible_jump(self):
+        with patch.dict("os.environ", SOLAR_COMMISSIONING_TOTAL_KWH="100"):
+            self.events(self.now, total=None)
+            self.assertFalse(self.events(self.now + timedelta(seconds=30), total=1099))
+            with self.assertLogs("dashboard.facts.milestones", level="WARNING"):
+                self.assertFalse(
+                    self.events(self.now + timedelta(seconds=31), total=5100)
+                )
+            self.assertFalse(self.events(self.now + DAY, total=10100))
 
-    def test_lru_uses_each_facts_most_recent_occurrence(self):
-        from dashboard.live_view import _catalog_last_use_ranks
-        history = [type("Selection", (), {"fact_id": fact_id})()
-                   for fact_id in ("N01", "N02", "N03", "N02")]
-        ranks = _catalog_last_use_ranks(history)
-        self.assertEqual(ranks, {"N01": 0, "N02": 1, "N03": 2})
-        self.assertEqual(max(("N01", "N02", "N03"), key=ranks.get), "N03")
+    def test_lifetime_first_reading_across_midnight_is_silent(self):
+        with patch.dict("os.environ", SOLAR_COMMISSIONING_TOTAL_KWH="0"):
+            before = self.now.replace(hour=23, minute=59, second=55)
+            self.events(before, total=999.99)
+            self.assertFalse(self.events(before + timedelta(seconds=15), total=1000.01))
+
+    def test_leap_anniversary(self):
+        with patch.dict("os.environ", SOLAR_COMMISSIONED_DATE="2024-02-29"):
+            now = datetime(2025, 2, 28, 12, tzinfo=ZURICH)
+            self.assertEqual(self.events(now)["ANNIVERSARY"].branch, "first")
+
+    def test_replay_read_only_and_no_future_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "source.db"
+            with SolarDatabase(str(path)) as db:
+                sample, _ = synthetic(self.now.date(), self.now, "sunny-summer")
+                db.store_snapshot(sample)
+            before = path.read_bytes()
+            slots = list(replay(self.now.date(), self.now.date(), None, path))
+            self.assertEqual(slots[7]["insight"], "MISSING")
+            self.assertEqual(slots[9]["insight"], "STALE")
+            self.assertEqual(before, path.read_bytes())

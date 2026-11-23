@@ -3,7 +3,7 @@
 import json
 import os
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,6 +18,7 @@ class SunDataResult:
     status: str
     source: str
     error: object = None
+    max_age_seconds: float = 21600
 
 
 def _read_cache(path):
@@ -41,8 +42,11 @@ def _read_cache(path):
             (weather_status == "valid" and weather_code is None) or
             weather_status not in ("valid", "missing", "invalid")):
         weather_code, weather_status = None, "invalid"
+    previous = payload.get("previous_daylight_seconds")
+    if type(previous) not in (float,int) or not 0 < previous <= 86400:
+        previous = None
     return SunData(local_date, sunrise, sunset, hours, fetched_at,
-                   weather_code, weather_status)
+                   weather_code, weather_status, previous)
 
 
 def _write_cache(path, data):
@@ -77,17 +81,21 @@ def get_sun_data(latitude, longitude, cache_path="data/sun-data.json", now=None,
         cache_invalid = True
     age = (now - cached.fetched_at.astimezone(timezone.utc)).total_seconds() if cached else None
     valid_day = bool(cached and cached.local_date == today and age >= 0)
-    if valid_day and age <= refresh_seconds:
-        return SunDataResult(cached, "fresh", "cache")
+    if valid_day and age <= min(refresh_seconds, max_age_seconds):
+        return SunDataResult(cached, "fresh", "cache",max_age_seconds=max_age_seconds)
     try:
         fresh = fetcher(latitude, longitude, now=now)
     except Exception as exc:  # External service failure must never stop publishing.
         if valid_day and age <= max_age_seconds:
-            return SunDataResult(cached, "cached", "cache", str(exc))
+            return SunDataResult(cached, "cached", "cache", str(exc), max_age_seconds)
         return SunDataResult(None, "invalid" if cache_invalid else "missing", "none", str(exc))
     try:
+        if cached and (today-cached.local_date).days in (0, 1):
+            prior = (cached.sunset.timestamp()-cached.sunrise.timestamp() if cached.local_date != today
+                     else cached.previous_daylight_seconds)
+            fresh = replace(fresh, previous_daylight_seconds=prior)
         _write_cache(cache_path, fresh)
     except Exception as exc:
         # A persistence problem must not discard a valid response or block SVG publishing.
         return SunDataResult(fresh, "fresh", "open-meteo", f"cache write failed: {exc}")
-    return SunDataResult(fresh, "fresh", "open-meteo")
+    return SunDataResult(fresh, "fresh", "open-meteo",max_age_seconds=max_age_seconds)

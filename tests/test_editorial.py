@@ -7,7 +7,7 @@ class EditorialTests(unittest.TestCase):
     def test_entire_energy_catalogue(self):
         self.assertEqual((len(ENERGY), len(ALIASES)), (76, 27))
         for row in ENERGY.values():
-            for energy in (.1, .5, 1, 5, 25, 80, 150, 250, 300):
+            for energy in (0.1, 0.5, 1, 5, 25, 80, 150, 250, 300):
                 candidate = energy_candidate(row, energy, energy)
                 if candidate:
                     for variant in (0, 1):
@@ -16,6 +16,89 @@ class EditorialTests(unittest.TestCase):
                         self.assertNotIn("{", "".join(lines))
 
     def test_physical_assumptions(self):
-        self.assertEqual(energy_candidate(ENERGY["goesgen"], 104.1, 104.1).values["duration"], "0,37 Sekunden")
+        self.assertEqual(
+            energy_candidate(ENERGY["goesgen"], 104.1, 104.1).values["duration"],
+            "0,37 Sekunden",
+        )
         self.assertAlmostEqual(ENERGY["lhc"]["power_w"] * 8760 / 1e9, 600)
-        self.assertEqual(energy_candidate(ENERGY["battery_equivalent"], 15.795, 15.795).values["quantity"], "1,0")
+        self.assertEqual(
+            energy_candidate(ENERGY["battery_equivalent"], 15.795, 15.795).values[
+                "quantity"
+            ],
+            "1,0",
+        )
+
+
+class MigrationAndStateTests(unittest.TestCase):
+    def test_populated_copy_concurrent_initialization_and_lifetime_crossing(self):
+        import sqlite3
+        import tempfile
+        from concurrent.futures import ThreadPoolExecutor
+        from datetime import datetime, timedelta
+        from dataclasses import replace
+        from pathlib import Path
+        from threading import Barrier
+
+        from dashboard.facts.milestones import active_events
+        from dashboard.facts.models import FactContext
+        from dashboard.preview import synthetic
+        from solar_data.storage import SolarDatabase
+        from solar_data.timezones import ZURICH
+
+        now = datetime(2026, 6, 1, 10, tzinfo=ZURICH)
+        sample, _ = synthetic(now.date(), now, "sunny-summer")
+        ctx = FactContext(now, None, None, 2, None, 1, None)
+        config = {"SOLAR_COMMISSIONING_TOTAL_KWH": "0"}
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "copy.db"
+            with (
+                SolarDatabase(str(Path(folder) / "original.db")) as db,
+                sqlite3.connect(path) as target,
+            ):
+                db.store_fact_selection("legacy", now, "N01", "legacy", 2)
+                db.store_snapshot(sample)
+                db.connection.backup(target)
+                target.executescript(
+                    "DROP TABLE insight_state; DROP TABLE milestone_events;"
+                )
+            with SolarDatabase(str(path)) as db:
+                active_events(
+                    db,
+                    ctx,
+                    {},
+                    True,
+                    replace(sample, energy_total_kwh=999.9),
+                    config=config,
+                )
+            barrier = Barrier(2)
+
+            def publish(_):
+                with SolarDatabase(str(path)) as db:
+                    barrier.wait(timeout=5)
+                    later = now + timedelta(seconds=30)
+                    events, _ = active_events(
+                        db,
+                        replace(ctx, now_local=later),
+                        {},
+                        True,
+                        replace(
+                            sample, timestamp=later.isoformat(), energy_total_kwh=1000
+                        ),
+                        config=config,
+                    )
+                    return [c.reference for c in events]
+
+            with ThreadPoolExecutor(2) as pool:
+                for result in pool.map(publish, range(2)):
+                    self.assertEqual(result, ["LIFETIME_ENERGY:1000"])
+            with SolarDatabase(str(path), read_only=True) as db:
+                self.assertEqual(db.get_fact_selection("legacy").fact_id, "N01")
+                self.assertEqual(
+                    db.latest_snapshot().energy_today_kwh, sample.energy_today_kwh
+                )
+                self.assertEqual(
+                    db.connection.execute(
+                        "SELECT count(*) FROM milestone_events"
+                    ).fetchone()[0],
+                    1,
+                )

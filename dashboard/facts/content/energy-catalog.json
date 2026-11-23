@@ -895,7 +895,7 @@
       ],
       "variants": [
         "{energy} kWh von {when}: So viel Strom benötigt der LHC samt Experimenten im Jahresmittel in rund {duration}.",
-        "Im Jahresmittel braucht der LHC samt Experimenten für {energy} kWh rund {duration}."
+        "Im Jahresmittel braucht der LHC samt Experimenten für {energy} kWh von {when} rund {duration}."
       ],
       "source_url": "https://home.cern/science/accelerators/large-hadron-collider/"
     },

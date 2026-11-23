@@ -1,19 +1,14 @@
 """Build and atomically publish the allowlisted public dashboard contract."""
 
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import math
 import os
 import tempfile
 from pathlib import Path
-from types import SimpleNamespace
 
 from solar_data.storage import _aware_utc
 from solar_data.timezones import ZURICH
-from .facts.history import (eligible_historical_candidates, historical_difference,
-                            render_historical)
-from .live_view import build_fact_context
-
 
 SCHEMA_VERSION = "1.0"
 GRID_IMPORT_PLOT_THRESHOLD_KW = 0.5
@@ -36,63 +31,6 @@ def _flow(value, positive, negative, available=True):
     else:
         direction = positive if value > 0 else negative
     return {"power_kw": value, "magnitude_kw": abs(value), "direction": direction}
-
-
-def _historical(database, now, day_yield, solar_power, sun,
-                insight_fact_id=None, insight_statement=None, candidates=None):
-    context = build_fact_context(database, now, day_yield, solar_power, sun)
-    if candidates is None:
-        candidates = eligible_historical_candidates(database, context)
-    # The average is the tile's canonical non-record statement.  Even when it
-    # covers the record day, it only compares production with an average and
-    # cannot claim a record by construction.  Suppressing HIST_RECORD below is
-    # therefore the semantic redundancy rule; text inequality alone is not.
-    # Keep other non-record candidates as fallbacks for older persisted views.
-    ordered = sorted(candidates, key=lambda item: item.fact_id != "HIST_AVERAGE")
-    for candidate in ordered:
-        if candidate.fact_id == insight_fact_id:
-            continue
-        details = candidate.context
-        rendered = render_historical(candidate.fact_id, context, details)
-        if rendered is None:
-            continue
-        statement = " ".join((rendered.line_1, rendered.line_2))
-        if statement == insight_statement:
-            continue
-        value = _number(details.get("comparison_energy_kwh", context.today_energy_kwh))
-        baseline = _number(details.get("baseline_energy_kwh"))
-        if value is not None and baseline is not None and baseline > 0:
-            difference_percent, direction = historical_difference(value, baseline)
-        else:
-            difference_percent, direction = None, None
-        return {
-            "type": candidate.fact_id,
-            "statement": statement,
-            "direction": direction,
-            "difference_percent": difference_percent,
-            "comparison_value_kwh": value,
-            "baseline_kwh": baseline,
-            "reference_period": details.get("period", "today"),
-            "reference_day": details.get("reference_day"),
-            "comparison_day": details.get("comparison_day"),
-            "baseline_days": details.get("baseline_days"),
-        }
-    return None
-
-
-def _sun_from_view(view, local_day):
-    sunrise = view["display"].get("sunrise")
-    sunset = view["display"].get("sunset")
-    if not sunrise or not sunset:
-        return None
-    try:
-        return SimpleNamespace(
-            sunrise=datetime.combine(local_day, time.fromisoformat(sunrise), ZURICH),
-            sunset=datetime.combine(local_day, time.fromisoformat(sunset), ZURICH),
-            weather_code=view.get("weather_code"),
-        )
-    except ValueError:
-        return None
 
 
 def build_web_payload(database, view, snapshot, now=None):
@@ -142,15 +80,7 @@ def build_web_payload(database, view, snapshot, now=None):
 
     battery_available = bool(snapshot and snapshot.battery_available)
     heat_available = bool(snapshot and snapshot.heat_available)
-    insight_statement = " ".join(
-        part for part in (display.get("story_line_1"), display.get("story_line_2"))
-        if part
-    )
-    historical = _historical(
-        database, now_utc, display.get("day_yield_kwh"),
-        snapshot.solar_power_kw if snapshot else None,
-        _sun_from_view(view, local_day), story.get("fact_id"), insight_statement,
-        view.get("_historical_candidates"))
+    historical = view.get("_historical_comparison")
     payload = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": now_utc.isoformat(),
@@ -210,6 +140,7 @@ def build_web_payload(database, view, snapshot, now=None):
         "insight": {
             "fact_id": story.get("fact_id"),
             "family": story.get("family"),
+            "variant": story.get("variant"), "branch": story.get("branch"),
             "line_1": display.get("story_line_1"),
             "line_2": display.get("story_line_2"),
             "selection_hour": story.get("selection_hour"),

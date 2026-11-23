@@ -276,25 +276,13 @@ Die bestehende `battery_available`-Übergangslogik bleibt massgeblich.
 UTC-Start/-Ende, tatsächlichen Mittelwerten für Solar, gesamten Hausverbrauch
 und Batteriefluss, dem letzten Batteriestand des Buckets sowie Sample-Anzahl.
 Nicht verfügbare Batteriestände werden als `null` publiziert. Es werden keine
-SVG-Koordinaten exportiert. `insight` enthält denselben stündlich persistierten
-Fact wie das eInk-Dashboard. `historical_comparison` wird unabhängig davon aus
-der bestehenden History-Logik ermittelt und ist entweder `null` oder trennt Typ,
-Aussage, Bezugszeitraum, Vergleichs- und Basiswert, prozentuale Differenz und
-Richtung (`higher`, `lower`, `similar`). Vergleichstag und Anzahl Basistage
-bleiben, soweit vorhanden, als eigene Felder erhalten. Standardmässig vergleicht
-die Kachel den jüngsten gemäss 95-%-Regel vollständigen Zürcher Kalendertag mit
-dem Mittel der zwei bis sieben jüngsten vollständigen Tage davor. Der
-Vergleichstag ist nie Teil dieses Mittels; Lücken werden übersprungen. Ein
-gleichzeitig aktiver Rekord-Fact bleibt als `insight` sichtbar, während die
-Kachel diesen nicht wiederholt. Fehlen zwei qualifizierte Referenztage oder ist
-deren Mittel null, bleibt `historical_comparison` kontrolliert `null`.
-Ein Durchschnittsvergleich über denselben Tag wie ein Rekord ist nicht
-redundant: Er setzt den Tagesertrag ausschliesslich zum Mittelwert ins
-Verhältnis und behauptet weder einen Rekord noch eine Überschreitung des alten
-Rekords. Rekordkandidaten werden bei aktivem Rekord-Insight semantisch anhand
-ihres Typs unterdrückt; blosse Textungleichheit gilt nicht als
-Redundanznachweis. Da `HIST_AVERAGE` konstruktiv keine Rekordaussage erzeugen
-kann, ist kein Ausweichen auf einen älteren Vergleichstag erforderlich.
+SVG-Koordinaten exportiert. SVG und Webansicht verwenden denselben Insight mit
+stabiler ID, Textvariante und aktuellen Zahlen. Die Webansicht verbindet die beiden
+Textfelder zu einem Absatz. Die historische Kachel wählt in dreistündigen Zürcher
+Zeitfenstern eine eigene Aussage aus den qualifizierten Tagen. Ohne geeigneten
+Vergleich ist sie `null`. Schema 1.0 unterstützt `higher`, `lower`, `similar` und
+`neutral` für Aussagen ohne Vergleichsrichtung. Basiswert, Vergleichswert und
+Prozentdifferenz sind optional. `reference_day` bezeichnet den Referenztag.
 
 Der JSON-Takt beträgt standardmässig 15 Sekunden
 (`DASHBOARD_JSON_REFRESH_SECONDS`), passend zum 10-Sekunden-Collector. Der
@@ -392,15 +380,14 @@ außerdem mindestens durchsuchbar sein; globale Schreibrechte wie `0666` oder
 
 ## Rekorde, Facts und Anzeige-Skalierung
 
-Ein Tagesrekord ist der höchste gültige Ertrag unter den vollständig abgeschlossenen,
-aggregatebasierten Aufzeichnungstagen. Ein laufender Tag benötigt mindestens zwei
-frühere abgeschlossene Tage und muss den bisherigen Höchstwert um mehr als 0,1 kWh
-übertreffen. Die Aussage lautet bewusst «seit Beginn der Aufzeichnung», nicht
-«Anlagenrekord». Nach der Überschreitung hat der Rekord am laufenden lokalen Tag
-Priorität und wird mit dem steigenden Tageswert aktualisiert; nach Mitternacht bleibt
-der endgültige Rekord des Vortags noch den ganzen Folgetag angeheftet. Fehlende oder
-veraltete Betriebsdaten bleiben höher priorisiert. Danach folgen andere historische
-Vergleiche, Katalog-Facts und technische Rückfälle.
+Die fünf [redaktionellen Kataloge](dashboard/facts/content/) liefern Energievergleiche,
+Morgengeschichten, historische Vergleiche, Zürcher Kalendertage und Meilensteine.
+Geräteverbräuche sind illustrative Annahmen. Ein neuer Tagesrekord erfordert frische
+Messwerte, einen verlässlichen Tageszähler, qualifizierte Fünf-Minuten-Werte bis
+zum aktuellen Zeitpunkt und mehr als 0,1 kWh Abstand zum bisherigen Rekord von
+mindestens zwei vollständigen Tagen. Bestätigte Ereignisse belegen den Insight
+bis zur Zürcher Mitternacht. Mehrere Ereignisse wechseln stündlich. Am nächsten
+Morgen kann ein bestätigter Rekord einmal erscheinen.
 
 Für Rekordvergleiche gilt ein vergangener Tag nur dann als vollständig, wenn seine
 5-Minuten-Aggregate den realen UTC-Zeitraum zwischen beiden Zürcher Mitternachten
@@ -415,15 +402,21 @@ Die Aggregate aller historischen Tage werden dazu in einer gemeinsamen SQL-Abfra
 geladen, lokal gruppiert und in einem Durchlauf qualifiziert. Die so ermittelten
 historischen Kandidaten werden innerhalb derselben Publisher-Auswertung für Insight
 und historischen Vergleich wiederverwendet; es gibt keine Abfrage pro Historientag.
-Gewöhnliche Produktionszustände wie Nacht, `ZERO` oder ein noch nicht angelaufener
-Tag verdrängen einen aktiven Rekord nicht.
+Vor Produktionsbeginn greift die Auswahl auf qualifizierte Vortage, verfügbare
+Tagesprognosen und Sonnenzeiten zurück. Energievergleiche rotieren mit
+abgestuften Abständen von 24, 12 und 6 tatsächlichen Auswahlen. Ein neuer
+Stundenanker fixiert die Auswahl, der angezeigte Ertrag aktualisiert sich weiter.
 
-Reguläre Katalog-Facts rotieren unabhängig davon. Die Auswahl vermeidet zuerst heute
-verwendete Facts, die letzten zwölf tatsächlich angezeigten Katalog-Facts und die
-vorherige Familie; gestern gezeigte Motive werden innerhalb derselben Stufe
-zurückgestellt. Ist der Pool erschöpft, erscheint der am längsten nicht gezeigte
-geeignete Fact statt eines technischen Textes. Status- und historische Meldungen
-zählen nicht zum Zwölfer-Gedächtnis.
+Die Vorschau schreibt pro realer Stunde eine Zeile in das JSON-Feld `slots`
+und fasst die Rotation in `summary` zusammen. Beispiele mit inklusivem Enddatum:
+
+```bash
+python -m dashboard preview-facts --from 2026-06-01 --to 2026-06-30 --scenario sunny-summer
+python -m dashboard --db-path /path/to/copy.db preview-facts --from 2026-07-01 --to 2026-07-30
+```
+
+Weitere Szenarien stehen in `python -m dashboard preview-facts --help`.
+[Simulationsbericht](docs/insights-v2/VALIDATION.md) · [Betrieb und Konfiguration](docs/OPERATIONS.md)
 
 `SOLAR_PROGRESS_MAX_KW = 18.0` kalibriert ausschliesslich die 20 Segmente der
 Solar-Progressbars in HTML und eInk. Die installierte Leistung bleibt 21,78 kWp;

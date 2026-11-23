@@ -7,115 +7,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dashboard.facts import hour_key
-from dashboard.facts.history import (eligible_historical_candidates,
-                                     historical_difference,
-                                     render_historical)
+from dashboard.facts.statistics import history_candidates
 from dashboard.facts.models import FactContext
 from dashboard.live_view import build_story
-from solar_data.storage import DailyYield, SolarDatabase, _utc_text
+from solar_data.storage import SolarDatabase, _utc_text
 from solar_data.timezones import ZURICH
 
 
-def context(hour=12, today=60, power=1, day=25):
-    now = datetime(2026, 7, day, hour, tzinfo=ZURICH)
-    return FactContext(now, now.replace(hour=6), now.replace(hour=21), today,
-                       None, power, None)
-
-
-class FakeDatabase:
-    def __init__(self, values):
-        self.values = values
-
-    def daily_yield_from_aggregates(self, day):
-        return DailyYield(day, self.values[day]) if day in self.values else None
-
-    def completed_daily_yields(self, before, limit=None):
-        rows = [DailyYield(day, value) for day, value in sorted(self.values.items())
-                if day < before]
-        return rows[-limit:] if limit else rows
-
-
-class HistoricalFactsTest(unittest.TestCase):
-    def ids(self, database, item):
-        return {candidate.fact_id: candidate for candidate in
-                eligible_historical_candidates(database, item)}
-
-    def test_record_requires_two_days_and_preserves_prior_record(self):
-        one = FakeDatabase({date(2026, 7, 24): 50})
-        self.assertNotIn("HIST_RECORD", self.ids(one, context(today=60)))
-        two = FakeDatabase({date(2026, 7, 23): 40, date(2026, 7, 24): 50})
-        candidate = self.ids(two, context(today=50.2))["HIST_RECORD"]
-        self.assertEqual(candidate.context["baseline_energy_kwh"], 50)
-        self.assertNotIn("HIST_RECORD", self.ids(two, context(today=50.1)))
-
-    def test_yesterday_higher_lower_and_neutral_wording(self):
-        base = {date(2026, 7, 24): 50}
-        for value, fragment in ((60, "mehr"), (40, "weniger"), (52, "fast gleich")):
-            candidate = self.ids(FakeDatabase(base), context(hour=22, today=value))["HIST_YESTERDAY"]
-            story = render_historical(candidate.fact_id, context(hour=22, today=value),
-                                      candidate.context)
-            self.assertIn(fragment, story.line_2)
-
-    def test_morning_uses_yesterday_and_active_skips_yesterday_comparison(self):
-        values = {date(2026, 7, 23): 40, date(2026, 7, 24): 60}
-        morning = context(hour=5, today=0, power=0)
-        candidate = self.ids(FakeDatabase(values), morning)["HIST_YESTERDAY"]
-        story = render_historical(candidate.fact_id, morning, candidate.context)
-        self.assertTrue(story.line_1.startswith("Gestern"))
-        self.assertIn("Vortag", story.line_2)
-        self.assertNotIn("HIST_YESTERDAY", self.ids(FakeDatabase(values), context()))
-
-    def test_average_compares_latest_complete_day_with_previous_seven(self):
-        values = {date(2026, 7, day): float(day) for day in (10, 12, 14, 16, 18, 20, 22, 24)}
-        candidate = self.ids(FakeDatabase(values), context(hour=22, today=30))["HIST_AVERAGE"]
-        self.assertEqual(candidate.context["reference_day"], "2026-07-24")
-        self.assertEqual(candidate.context["comparison_energy_kwh"], 24)
-        self.assertEqual(candidate.context["baseline_days"], 7)
-        self.assertAlmostEqual(candidate.context["baseline_energy_kwh"],
-                               sum((10, 12, 14, 16, 18, 20, 22)) / 7)
-        too_few = FakeDatabase({date(2026, 7, 23): 20, date(2026, 7, 24): 30})
-        self.assertNotIn("HIST_AVERAGE", self.ids(too_few, context(hour=22)))
-
-    def test_average_uses_every_available_reference_from_two_to_seven(self):
-        for count in range(2, 8):
-            values = {date(2026, 7, day): float(day)
-                      for day in range(24 - count, 25)}
-            candidate = self.ids(FakeDatabase(values), context())["HIST_AVERAGE"]
-            references = list(range(24 - count, 24))
-            self.assertEqual(candidate.context["baseline_days"], count)
-            self.assertAlmostEqual(candidate.context["baseline_energy_kwh"],
-                                   sum(references) / count)
-
-    def test_zero_comparison_day_is_a_valid_negative_comparison(self):
-        database = FakeDatabase({date(2026, 7, 22): 20,
-                                 date(2026, 7, 23): 30,
-                                 date(2026, 7, 24): 0})
-        candidate = self.ids(database, context())["HIST_AVERAGE"]
-        self.assertEqual(candidate.context["comparison_energy_kwh"], 0)
-        self.assertEqual(historical_difference(0, 25), (-100, "lower"))
-
-    def test_average_skips_missing_days_and_rejects_zero_baseline(self):
-        values = {date(2026, 7, 10): 10, date(2026, 7, 18): 20,
-                  date(2026, 7, 24): 30}
-        candidate = self.ids(FakeDatabase(values), context())["HIST_AVERAGE"]
-        self.assertEqual(candidate.context["baseline_days"], 2)
-        self.assertEqual(candidate.context["baseline_energy_kwh"], 15)
-        zero = FakeDatabase({date(2026, 7, 20): 0, date(2026, 7, 21): 0,
-                             date(2026, 7, 24): 10})
-        self.assertNotIn("HIST_AVERAGE", self.ids(zero, context()))
-
-    def test_average_wording_covers_higher_lower_and_similar(self):
-        for value, fragment, direction in ((60, "über", "higher"),
-                                           (40, "unter", "lower"),
-                                           (51, "ungefähr", "similar")):
-            database = FakeDatabase({date(2026, 7, 22): 50,
-                                     date(2026, 7, 23): 50,
-                                     date(2026, 7, 24): value})
-            candidate = self.ids(database, context())["HIST_AVERAGE"]
-            story = render_historical(candidate.fact_id, context(), candidate.context)
-            self.assertIsNotNone(story)
-            self.assertIn(fragment, " ".join((story.line_1, story.line_2)))
-            self.assertEqual(historical_difference(value, 50)[1], direction)
+def candidates_for(database, ctx):
+    day = ctx.now_local.date()
+    return history_candidates({r.local_day:r.energy_kwh for r in database.completed_record_daily_yields(day)},day)
 
 
 class HistoricalStorageTest(unittest.TestCase):
@@ -243,7 +144,7 @@ class HistoricalStorageTest(unittest.TestCase):
             self.db.connection.set_trace_callback(None)
             story_counts.append(len(selects))
         self.assertEqual(counts, [1, 1])
-        self.assertEqual(story_counts, [3, 3])
+        self.assertEqual(story_counts, [2, 2])
 
     def test_expected_bucket_minimum_respects_real_dst_day_length(self):
         expected = {}
@@ -273,13 +174,13 @@ class HistoricalStorageTest(unittest.TestCase):
                 now = datetime.combine(comparison_day + timedelta(days=1),
                                        datetime.min.time(), tzinfo=ZURICH).replace(hour=12)
                 item = next(candidate for candidate in
-                            eligible_historical_candidates(
+                            candidates_for(
                                 self.db, FactContext(now, None, None, 0, None, 0, None))
-                            if candidate.fact_id == "HIST_AVERAGE")
-                self.assertEqual(item.context["reference_day"],
+                            if candidate.ident == "HIST_AVERAGE")
+                self.assertEqual(item.meta["reference_day"],
                                  comparison_day.isoformat())
-                self.assertEqual(item.context["baseline_days"], 2)
-                self.assertAlmostEqual(item.context["baseline_energy_kwh"], 15)
+                self.assertEqual(item.meta["baseline_days"], 2)
+                self.assertAlmostEqual(item.meta["baseline_kwh"], 15)
 
     def test_average_skips_incomplete_days_and_allows_calendar_gaps(self):
         self.complete_day(date(2026, 7, 20), 10)
@@ -287,23 +188,23 @@ class HistoricalStorageTest(unittest.TestCase):
         self.yield_aggregate(datetime(2026, 7, 23, 12, tzinfo=ZURICH), 99)
         self.complete_day(date(2026, 7, 24), 30)
         now = datetime(2026, 7, 25, 12, tzinfo=ZURICH)
-        item = next(candidate for candidate in eligible_historical_candidates(
+        item = next(candidate for candidate in candidates_for(
             self.db, FactContext(now, None, None, 0, None, 0, None))
-                    if candidate.fact_id == "HIST_AVERAGE")
-        self.assertEqual(item.context["reference_day"], "2026-07-24")
-        self.assertEqual(item.context["baseline_days"], 2)
-        self.assertEqual(item.context["baseline_energy_kwh"], 15)
+                    if candidate.ident == "HIST_AVERAGE")
+        self.assertEqual(item.meta["reference_day"], "2026-07-24")
+        self.assertEqual(item.meta["baseline_days"], 2)
+        self.assertEqual(item.meta["baseline_kwh"], 15)
 
-    def test_yesterday_record_beats_zero_for_entire_following_day(self):
+    def test_yesterday_record_gets_one_morning_slot(self):
         for local_day, energy in ((date(2026, 7, 22), 20),
                                   (date(2026, 7, 23), 30),
                                   (date(2026, 7, 24), 40)):
             self.complete_day(local_day, energy)
+        build_story(self.db,datetime(2026,7,24,12,tzinfo=ZURICH),5,1)
         for hour, minute in ((0, 5), (1, 5), (8, 0), (23, 55)):
             story = build_story(self.db, datetime(2026, 7, 25, hour, minute,
                                                    tzinfo=ZURICH), 0, 0)
-            self.assertEqual(story.fact_id, "HIST_RECORD")
-            self.assertEqual(story.energy_kwh, 40)
+            self.assertEqual(story.fact_id=="RECORD_AFTERGLOW", hour==0)
 
     def test_incomplete_days_cannot_create_yesterday_record(self):
         for local_day, energy in ((date(2026, 7, 22), 20),
@@ -314,20 +215,16 @@ class HistoricalStorageTest(unittest.TestCase):
         story = build_story(self.db, datetime(2026, 7, 25, 8, tzinfo=ZURICH), 0, 0)
         self.assertNotEqual(story.fact_id, "HIST_RECORD")
 
-    def test_current_record_updates_value_and_keeps_baseline_until_midnight(self):
+    def test_unqualified_current_day_cannot_set_record(self):
         self.complete_day(date(2026, 7, 23), 20)
         self.complete_day(date(2026, 7, 24), 30)
         morning = build_story(self.db, datetime(2026, 7, 25, 12, tzinfo=ZURICH),
                               30.2, 2)
         evening = build_story(self.db, datetime(2026, 7, 25, 23, 59,
                                                 tzinfo=ZURICH), 42, 1)
-        self.assertEqual((morning.fact_id, evening.fact_id),
-                         ("HIST_RECORD", "HIST_RECORD"))
-        self.assertEqual((morning.energy_kwh, evening.energy_kwh), (30.2, 42))
-        self.assertEqual(morning.historical_baseline_kwh, 30)
-        self.assertEqual(evening.historical_baseline_kwh, 30)
+        self.assertNotIn("DAILY_RECORD", (morning.fact_id, evening.fact_id))
 
-    def test_current_record_wins_over_yesterday_and_pin_expires_next_day(self):
+    def test_past_yields_alone_do_not_pin_record(self):
         for local_day, energy in ((date(2026, 7, 22), 20),
                                   (date(2026, 7, 23), 30),
                                   (date(2026, 7, 24), 40)):
@@ -336,7 +233,7 @@ class HistoricalStorageTest(unittest.TestCase):
                               40.2, 2)
         expired = build_story(self.db, datetime(2026, 7, 26, 8, tzinfo=ZURICH),
                               0, 0)
-        self.assertEqual(current.fact_id, "HIST_RECORD")
+        self.assertNotEqual(current.fact_id, "DAILY_RECORD")
         self.assertEqual(current.energy_period, "today")
         self.assertNotEqual(expired.fact_id, "HIST_RECORD")
 
@@ -356,9 +253,9 @@ class HistoricalStorageTest(unittest.TestCase):
     def test_historical_candidates_are_computed_once_per_story(self):
         self.complete_day(date(2026, 7, 23), 20)
         self.complete_day(date(2026, 7, 24), 30)
-        from dashboard.facts.history import eligible_historical_candidates
-        with patch("dashboard.live_view.eligible_historical_candidates",
-                   wraps=eligible_historical_candidates) as candidates:
+        from dashboard.facts.statistics import history_candidates
+        with patch("dashboard.live_view.history_candidates",
+                   wraps=history_candidates) as candidates:
             build_story(self.db, datetime(2026, 7, 25, 12, tzinfo=ZURICH),
                         10, 2)
         self.assertEqual(candidates.call_count, 1)
@@ -383,7 +280,7 @@ class HistoricalStorageTest(unittest.TestCase):
         self.db = SolarDatabase(self.path)
         self.assertEqual(self.db.get_fact_selection("key").context_json, first)
 
-    def test_midnight_morning_history_uses_yesterday_without_new_day_anchor(self):
+    def test_midnight_morning_omits_incomplete_yesterday(self):
         now = datetime(2026, 7, 26, 0, 45, tzinfo=ZURICH)
         self.yield_aggregate(datetime(2026, 7, 24, 23, 50, tzinfo=ZURICH), 40)
         self.yield_aggregate(datetime(2026, 7, 25, 23, 50, tzinfo=ZURICH), 60)
@@ -391,16 +288,10 @@ class HistoricalStorageTest(unittest.TestCase):
         story = build_story(self.db, now, 0, 0)
 
         self.assertEqual(now.date().isoformat(), "2026-07-26")
-        self.assertEqual(story.fact_id, "HIST_YESTERDAY")
-        self.assertEqual(story.energy_period, "yesterday")
-        self.assertTrue(story.line_1.startswith("Gestern"))
-        self.assertEqual(story.historical_reference_day, "2026-07-25")
-        self.assertEqual(story.selection_energy_kwh, 60)
-        stored = self.db.get_fact_selection(hour_key(now.replace(minute=0)))
-        self.assertEqual(stored.local_day, "2026-07-26")
-        self.assertEqual(stored.selection_energy_kwh, 60)
+        self.assertIn(story.fact_id, {"NIGHT_STATUS","TECH_CONTEXT"})
+        self.assertIsNone(story.energy_period)
 
-    def test_historical_record_after_first_production_anchor_keeps_anchor_energy(self):
+    def test_incomplete_record_day_uses_first_energy_anchor(self):
         now = datetime(2026, 7, 26, 8, 45, tzinfo=ZURICH)
         self.complete_day(date(2026, 7, 24), 20)
         self.complete_day(date(2026, 7, 25), 30)
@@ -412,7 +303,7 @@ class HistoricalStorageTest(unittest.TestCase):
 
         story = build_story(self.db, now, 35, 1)
 
-        self.assertEqual(story.fact_id, "HIST_RECORD")
+        self.assertNotEqual(story.fact_id, "DAILY_RECORD")
         self.assertEqual(story.energy_period, "today")
         self.assertEqual(story.selection_energy_kwh, 34)
         self.assertEqual(self.db.get_fact_selection(

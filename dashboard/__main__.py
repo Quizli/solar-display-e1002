@@ -6,7 +6,7 @@ import os
 import signal
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from solar_data.storage import SolarDatabase
 from sun_data import get_sun_data
@@ -44,6 +44,11 @@ def parser():
     result.add_argument("--stale-seconds", type=_positive, default=float(os.environ.get("DASHBOARD_STALE_SECONDS", "180")))
     result.add_argument("--sun-cache", default=os.environ.get("SUN_DATA_CACHE_PATH", "data/sun-data.json"))
     commands = result.add_subparsers(dest="command", required=True)
+    preview = commands.add_parser("preview-facts")
+    preview.add_argument("--from", dest="first", type=date.fromisoformat, required=True)
+    preview.add_argument("--to", dest="last", type=date.fromisoformat, required=True)
+    preview.add_argument("--scenario", choices=("sunny-summer", "overcast-winter", "zero-production", "missing-data", "midnight-dst", "milestone-collision", "counter-reset"))
+    preview.add_argument("--db-path", default=argparse.SUPPRESS)
     commands.add_parser("once")
     commands.add_parser("status")
     health = commands.add_parser("health")
@@ -65,6 +70,9 @@ def main():
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
     try:
+        if args.command == "preview-facts":
+            from .preview import preview
+            return preview(args)
         factor = validate_co2_factor(os.environ.get("CO2_AVOIDED_KG_PER_KWH", "0.128"))
         refresh = _positive(os.environ.get("SUN_DATA_REFRESH_SECONDS", "1800"))
         max_age = _positive(os.environ.get("SUN_DATA_MAX_AGE_SECONDS", "21600"))

@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dashboard.live_view import build_live_view
-from dashboard.facts.catalog import FACTS
+from dashboard.facts.editorial import ENERGY
 from dashboard.facts.engine import hour_key
 from dashboard.publisher import publish_view
 from dashboard.web_publisher import build_web_payload, publish_web_payload
@@ -235,9 +235,9 @@ process.stdout.write(JSON.stringify({
         self.snapshot()
         self.aggregate(5)
         local_hour = self.now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
-        fact = next(item for item in FACTS if item.min_kwh <= 12 <= item.max_kwh)
+        fact = ENERGY["phone_charge"]
         self.database.store_fact_selection(hour_key(local_hour), local_hour,
-                                           fact.fact_id, fact.family, 12)
+                                           fact["id"], fact["family"], 12)
         for day, energy in ((23, 8), (24, 10)):
             timestamp = datetime(2026, 7, day, 18, tzinfo=timezone.utc)
             self.database.connection.execute(
@@ -247,11 +247,11 @@ process.stdout.write(JSON.stringify({
 
         payload, _ = self.payload()
         comparison = payload["historical_comparison"]
-        self.assertEqual(payload["insight"]["fact_id"], fact.fact_id)
+        self.assertEqual(payload["insight"]["fact_id"], fact["id"])
         self.assertIsNone(comparison)
 
 
-    def test_active_today_record_keeps_real_average_comparison(self):
+    def test_unqualified_today_keeps_independent_qualified_history(self):
         for day, energy in ((21, 10), (22, 20), (23, 30), (24, 40)):
             self.complete_day(date(2026, 7, day), energy)
         self.snapshot(energy=40.2)
@@ -260,15 +260,14 @@ process.stdout.write(JSON.stringify({
         comparison = payload["historical_comparison"]
         insight_text = " ".join((payload["insight"]["line_1"],
                                  payload["insight"]["line_2"]))
-        self.assertEqual(comparison["type"], "HIST_AVERAGE")
+        self.assertIn(comparison["type"], {"HIST_AVERAGE","HIST_YESTERDAY"})
         self.assertEqual(comparison["reference_day"], "2026-07-24")
-        self.assertEqual(comparison["baseline_days"], 3)
-        self.assertAlmostEqual(comparison["comparison_value_kwh"], 40)
-        self.assertAlmostEqual(comparison["baseline_kwh"], 20)
+        self.assertEqual(comparison["comparison_value_kwh"], 40)
+        self.assertNotEqual(payload["insight"]["fact_id"], "DAILY_RECORD")
         self.assertNotEqual(comparison["type"], payload["insight"]["fact_id"])
         self.assertNotEqual(comparison["statement"], insight_text)
 
-    def test_yesterday_record_and_average_cover_entire_following_day(self):
+    def test_first_install_omits_retroactive_afterglow(self):
         for day, energy in ((21, 10), (22, 20), (23, 30), (24, 40)):
             self.complete_day(date(2026, 7, day), energy)
         for hour, minute in ((0, 5), (8, 0), (23, 55)):
@@ -277,55 +276,48 @@ process.stdout.write(JSON.stringify({
                 self.snapshot(solar=0, energy=0)
                 payload, _ = self.payload()
                 comparison = payload["historical_comparison"]
-                self.assertEqual(payload["insight"]["fact_id"], "HIST_RECORD")
-                self.assertIn("Tagesrekord", payload["insight"]["line_2"])
-                self.assertEqual(comparison["type"], "HIST_AVERAGE")
-                self.assertEqual(comparison["reference_day"], "2026-07-24")
-                self.assertEqual(comparison["baseline_days"], 3)
-                self.assertAlmostEqual(comparison["comparison_value_kwh"], 40)
-                self.assertAlmostEqual(comparison["baseline_kwh"], 20)
-                self.assertNotIn("Rekord", comparison["statement"])
+                self.assertNotEqual(payload["insight"]["fact_id"], "RECORD_AFTERGLOW")
+                self.assertIsNotNone(comparison)
+                self.assertNotEqual(comparison["type"], payload["insight"]["fact_id"])
 
         self.now = datetime(2026, 7, 26, 8, tzinfo=ZURICH)
         self.snapshot(solar=0, energy=0)
         payload, _ = self.payload()
         self.assertNotEqual(payload["insight"]["fact_id"], "HIST_RECORD")
 
-    def test_average_payload_survives_database_restart_without_record(self):
+    def test_historical_tile_survives_database_restart(self):
         for day, energy in ((21, 20), (22, 30), (23, 25), (24, 27)):
             self.complete_day(date(2026, 7, day), energy)
         self.snapshot(energy=10)
         local_hour = self.now.astimezone(ZURICH).replace(
             minute=0, second=0, microsecond=0)
-        fact = next(item for item in FACTS if item.min_kwh <= 10 <= item.max_kwh)
+        fact = ENERGY["phone_charge"]
         self.database.store_fact_selection(
-            hour_key(local_hour), local_hour, fact.fact_id, fact.family, 10)
+            hour_key(local_hour), local_hour, fact["id"], fact["family"], 10)
         before, _ = self.payload()
         self.database.close()
         self.database = SolarDatabase(str(self.directory / "solar.db"))
         after, _ = self.payload()
         self.assertNotEqual(before["insight"]["fact_id"], "HIST_RECORD")
-        self.assertEqual(before["historical_comparison"]["type"], "HIST_AVERAGE")
+        self.assertIn(before["historical_comparison"]["type"], {"HIST_AVERAGE","HIST_YESTERDAY"})
         self.assertEqual(before["historical_comparison"],
                          after["historical_comparison"])
 
     def test_publisher_reuses_candidates_from_single_live_view_build(self):
         self.snapshot()
         snapshot = self.database.latest_snapshot()
-        from dashboard.facts.history import eligible_historical_candidates
-        with patch("dashboard.live_view.eligible_historical_candidates",
-                   wraps=eligible_historical_candidates) as live_candidates, patch(
-                       "dashboard.web_publisher.eligible_historical_candidates",
-                       wraps=eligible_historical_candidates) as web_candidates:
+        from dashboard.facts.statistics import history_candidates
+        with patch("dashboard.live_view.history_candidates",
+                   wraps=history_candidates) as live_candidates:
             view = build_live_view(self.database, self.now, snapshot=snapshot)
             build_web_payload(self.database, view, snapshot, self.now)
         self.assertEqual(live_candidates.call_count, 1)
-        self.assertEqual(web_candidates.call_count, 0)
 
-    def test_full_payload_query_count_is_constant_for_30_and_300_days(self):
-        from dashboard.facts.history import eligible_historical_candidates
+
+    def test_full_payload_query_count_is_bounded_through_1000_days(self):
+        from dashboard.facts.statistics import history_candidates
         measurements = []
-        for days in (30, 300):
+        for days in (30, 300, 1000):
             self.database.close()
             self.database = SolarDatabase(
                 str(self.directory / f"query-{days}.db"))
@@ -341,8 +333,8 @@ process.stdout.write(JSON.stringify({
             self.database.connection.set_trace_callback(
                 lambda sql: statements.append(sql) if
                 sql.lstrip().upper().startswith("SELECT") else None)
-            with patch("dashboard.live_view.eligible_historical_candidates",
-                       wraps=eligible_historical_candidates) as candidates:
+            with patch("dashboard.live_view.history_candidates",
+                       wraps=history_candidates) as candidates:
                 snapshot = self.database.latest_snapshot()
                 view = build_live_view(self.database, self.now, snapshot=snapshot)
                 payload = build_web_payload(
@@ -353,7 +345,9 @@ process.stdout.write(JSON.stringify({
             self.assertIsNotNone(payload["historical_comparison"])
             self.assertEqual(candidates.call_count, 1)
             measurements.append((len(statements), len(aggregate_selects)))
-        self.assertEqual(measurements, [(20, 9), (20, 9)])
+        self.assertEqual(len(set(measurements)), 1)
+        self.assertLessEqual(measurements[0][0], 26)
+        self.assertLessEqual(measurements[0][1], 9)
 
     def test_atomic_write_permissions_privacy_and_svg_regression(self):
         self.snapshot()

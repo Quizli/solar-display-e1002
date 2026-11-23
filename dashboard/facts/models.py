@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Mapping, Optional, Tuple
+from typing import Mapping, Optional, Tuple
 
 
 Lines = Tuple[str, str]
@@ -20,11 +20,15 @@ class FactContext:
     selection_energy_by_hour: Mapping[str, float] = field(default_factory=dict)
     selection_bucket_by_hour: Mapping[str, str] = field(default_factory=dict)
 
+    sunshine_hours: Optional[float] = None
+    previous_daylight_seconds: Optional[float] = None
+    has_buckets: bool = False
+
 
 @dataclass(frozen=True)
 class Story:
-    fact_id: str
-    family: str
+    fact_id: Optional[str]
+    family: Optional[str]
     line_1: str
     line_2: str
     phase: str
@@ -39,17 +43,10 @@ class Story:
     selection_bucket_start: Optional[str] = None
     selection_persisted: bool = False
     selection_source: str = "none"
+    variant: Optional[int] = None
+    branch: str = "default"
+    semantic: str = ""
+    event_key: Optional[str] = None
     historical_fact: bool = False
     historical_reference_day: Optional[str] = None
     historical_baseline_kwh: Optional[float] = None
-
-
-@dataclass(frozen=True)
-class FactDefinition:
-    fact_id: str
-    family: str
-    min_kwh: float
-    max_kwh: float
-    weight: float
-    render: Callable[[float, str], Lines]
-    render_short: Optional[Callable[[float, str], Lines]] = None

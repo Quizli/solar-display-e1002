@@ -11,6 +11,31 @@ git pull --ff-only origin main
 sudo docker compose up -d --build --remove-orphans
 ```
 
+## Insights v2 configuration and rollback
+
+Before the first reviewed deployment, make a consistent SQLite backup using the
+backup procedure below. Keep the collector and publisher on the existing volume.
+The publisher reads two optional values from the private NAS `.env` file.
+
+| Variable | Meaning |
+| --- | --- |
+| `SOLAR_COMMISSIONED_DATE` | Confirmed first day of operation, ISO date in Europe/Zurich. Enables age and anniversary stories. |
+| `SOLAR_COMMISSIONING_TOTAL_KWH` | Confirmed original nonnegative Fronius lifetime reading in kWh. Enables lifetime crossings. |
+
+Leave unknown values empty. On the first trusted reading, the publisher acknowledges
+existing totals silently. Subsequent crossings need two valid readings on the same
+local date, at most ten minutes apart. The continuity check allows 24 kW times elapsed
+hours plus 0.1 kWh of meter tolerance. A reset or impossible jump quarantines lifetime
+events. Verify the meter and original configuration before correcting the baseline.
+
+SQLite gains indexes, `insight_state` and `milestone_events`. Existing fact-history
+rows keep their original IDs. New slot revisions preserve earlier selections.
+Rollback uses the previous application image with the same database. Leave the
+additive tables in place. Restoring an older database backup would discard newer
+measurements. Serve the matching dashboard JavaScript with the publisher for the
+expanded comparison direction enum. Forecast history begins with the first daily
+cache rollover. Equinox and solstice entries currently cover 2026 and 2027.
+
 ## Health check
 
 ```bash
