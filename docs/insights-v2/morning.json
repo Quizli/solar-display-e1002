@@ -1,0 +1,258 @@
+{
+  "version": 2,
+  "locale": "de-CH",
+  "stories": [
+    {
+      "id": "YESTERDAY_RECAP",
+      "priority": 50,
+      "condition": "Yesterday qualified. Neutral always; comparison only if previous actual calendar day qualified; percentage only with baseline >=0.1 kWh.",
+      "variants": {
+        "neutral": [
+          "Gestern kamen {energy} kWh vom Dach. Heute startet die Tagesbilanz wieder bei null.",
+          "Der gestrige Solartag endete bei {energy} kWh. Mal sehen, was heute zusammenkommt.",
+          "{energy} kWh Solarstrom gestern. Heute fängt der Tageszähler wieder von vorne an."
+        ],
+        "higher": [
+          "Gestern kamen {energy} kWh vom Dach, {pct} % mehr als am Vortag."
+        ],
+        "lower": [
+          "{energy} kWh gestern. Das waren {delta} kWh weniger als am Vortag."
+        ],
+        "similar": [
+          "Gestern und der Vortag lagen fast gleichauf: {energy} zu {baseline} kWh."
+        ]
+      },
+      "semantics": {
+        "neutral": "yesterday_total",
+        "higher": "day_vs_previous",
+        "lower": "day_vs_previous",
+        "similar": "day_vs_previous"
+      }
+    },
+    {
+      "id": "YESTERDAY_RANK",
+      "priority": 75,
+      "condition": "Reuse HIST_RECENT_RANK only if actual yesterday is reference.",
+      "variants": {
+        "high": [
+          "Gestern waren es {energy} kWh: Rang {rank} der letzten 7 vollständig erfassten Tage.",
+          "Gestern landete der Solarertrag auf Rang {rank} von 7 vollständig erfassten Tagen."
+        ],
+        "low": [
+          "Gestern reichte es mit {energy} kWh zu Rang {rank} unter den letzten 7 vollständigen Tagen (stärkster zuerst)."
+        ]
+      },
+      "semantic": "recent_rank"
+    },
+    {
+      "id": "RECORD_AFTERGLOW",
+      "priority": 100,
+      "condition": "Yesterday qualified and exceeded earlier qualified maximum by >0.1 kWh; require two older qualified days. Show one morning slot; no retrospective cutover celebration.",
+      "variants": {
+        "default": [
+          "Gestern endete der Solartag mit {energy} kWh als neuer Tagesrekord seit Messbeginn.",
+          "{energy} kWh gestern – neuer Bestwert der Solarstatistik.",
+          "Gestern fiel der Tagesrekord: {energy} statt bisher {old_record} kWh."
+        ]
+      },
+      "semantic": "record"
+    },
+    {
+      "id": "SUNSHINE_OUTLOOK",
+      "priority": 65,
+      "condition": "Valid forecast for today's local date, not older than configured cache limit. Sunshine duration, not daylight. Branches [0,2),[2,5),[5,8),[8,11),[11,infinity) hours.",
+      "variants": {
+        "very_low": [
+          "Für heute sind nur {sunshine} Sonnenstunden angekündigt. Der Tagesrekord kann vermutlich ruhig schlafen.",
+          "Heute stehen nur {sunshine} Sonnenstunden in der Prognose. Auch diffuses Licht kann Strom liefern."
+        ],
+        "low": [
+          "Für heute werden rund {sunshine} Sonnenstunden erwartet. Mal sehen, was das Dach daraus macht.",
+          "{sunshine} Sonnenstunden stehen heute in der Prognose. Der Rest bleibt eine Frage der Wolken."
+        ],
+        "medium": [
+          "Heute sind rund {sunshine} Sonnenstunden angekündigt. Die Sonne hat einiges vor.",
+          "{sunshine} Sonnenstunden laut Prognose. Mal sehen, wie voll der Tageschart wird."
+        ],
+        "high": [
+          "Für heute sind {sunshine} Sonnenstunden angekündigt. Gute Aussichten fürs Dach.",
+          "{sunshine} Stunden Sonnenschein stehen heute in der Prognose. Das Dach bekommt einiges zu tun."
+        ],
+        "very_high": [
+          "Heute werden {sunshine} Sonnenstunden erwartet. Viel Zeit für einen sonnigen Tagesverlauf.",
+          "{sunshine} Sonnenstunden in der Prognose. Ein vielversprechender Tag fürs Dach."
+        ]
+      }
+    },
+    {
+      "id": "WEATHER_OUTLOOK",
+      "priority": 60,
+      "condition": "Valid daily WMO forecast, not observed current weather; require forecast age within cache limit.",
+      "variants": {
+        "sunny": [
+          "Die Tagesprognose ist sonnig. Die Voraussetzungen fürs Dach sehen gut aus.",
+          "Viel Sonne in der Prognose. Mal sehen, was der Zähler daraus macht."
+        ],
+        "mainly_clear": [
+          "Heute wird überwiegend klarer Himmel erwartet. Gute Aussichten fürs Dach."
+        ],
+        "partly_cloudy": [
+          "Sonne und Wolken stehen heute in der Prognose. Im Chart könnte etwas Bewegung entstehen.",
+          "Für heute sind sowohl Sonne als auch Wolken angekündigt."
+        ],
+        "overcast": [
+          "Heute wird ein bedeckter Himmel erwartet. Auch diffuses Licht kann Solarstrom liefern."
+        ],
+        "fog": [
+          "Nebel steht in der Tagesprognose. Der erste messbare Solarstrom könnte auf sich warten lassen."
+        ],
+        "rain": [
+          "Regen steht heute in der Prognose. Ein Tagesrekord wäre eher eine Überraschung.",
+          "Heute sind Niederschläge angekündigt. Mal sehen, was trotzdem vom Dach kommt."
+        ],
+        "snow": [
+          "Schnee steht in der Prognose. Ob das Dach frei bleibt, wird sich zeigen."
+        ],
+        "thunderstorm": [
+          "Gewitter sind heute möglich. Ein wechselhafter Produktionsverlauf wäre keine Überraschung."
+        ]
+      }
+    },
+    {
+      "id": "DAYLIGHT",
+      "priority": 45,
+      "condition": "Valid sunrise and sunset; actual elapsed time between sunrise and sunset, not sunshine duration.",
+      "variants": {
+        "default": [
+          "Zwischen Sonnenauf- und -untergang liegen heute {duration}.",
+          "Sonnenaufgang um {sunrise} Uhr, Sonnenuntergang um {sunset} Uhr. Dazwischen liegen {duration}.",
+          "Heute liegen {duration} zwischen Sonnenauf- und -untergang. Wie viel davon sonnig wird, entscheidet das Wetter."
+        ]
+      }
+    },
+    {
+      "id": "DAYLIGHT_CHANGE",
+      "priority": 55,
+      "condition": "Valid sunrise/sunset today and yesterday, elapsed duration difference; absolute rounded difference >=1 min.",
+      "variants": {
+        "longer": [
+          "Heute gibt es {delta_minutes} mehr Tageslicht als gestern.",
+          "Die Tage werden länger. Heute gewinnt die Sonne {delta_minutes} Tageslicht dazu."
+        ],
+        "shorter": [
+          "Heute gibt es {delta_minutes} weniger Tageslicht als gestern.",
+          "Die Tage werden kürzer. Zwischen Auf- und Untergang fehlen heute {delta_minutes} gegenüber gestern."
+        ]
+      }
+    },
+    {
+      "id": "SEASONAL_DIRECTION",
+      "priority": 40,
+      "condition": "Valid nonzero day-length difference; near-solstice branch only within seven days of a verified solstice.",
+      "variants": {
+        "longer": [
+          "Die Tage werden wieder länger. Für das Dach wächst das Zeitfenster mit Tageslicht.",
+          "Die Tageslänge nimmt zu. Das Dach bekommt von Tag zu Tag etwas mehr Tageslicht."
+        ],
+        "shorter": [
+          "Die Tage werden wieder kürzer. Das Zeitfenster zwischen Auf- und Untergang schrumpft.",
+          "Die Tageslänge nimmt ab. Bis zur Wintersonnenwende werden die Tage noch kürzer."
+        ],
+        "near_solstice": [
+          "Rund um die Sonnenwende ändert sich die Tageslänge nur noch wenig."
+        ]
+      }
+    },
+    {
+      "id": "STREAK_RECAP",
+      "priority": 80,
+      "condition": "Reuse HIST_STREAK or HIST_STREAK_END, suppress when active milestone conveys same event.",
+      "variants": {
+        "running": [
+          "Bis gestern lagen {days} Tage in Folge über 100 kWh. Heute beginnt der Tageszähler bei null.",
+          "Die letzten {days} Kalendertage brachten jeweils mehr als 100 kWh Solarstrom."
+        ],
+        "ended": [
+          "Nach {days} Tagen in Folge über 100 kWh blieb der gestrige Ertrag darunter."
+        ]
+      },
+      "semantics": {
+        "running": "streak",
+        "ended": "streak_end"
+      }
+    },
+    {
+      "id": "RECENT_TREND",
+      "priority": 70,
+      "condition": "Reuse HIST_3DAY_TREND context and eligibility.",
+      "variants": {
+        "higher": [
+          "Der Schnitt der letzten 3 vollständigen Tage liegt {pct} % über den 3 Tagen davor.",
+          "Zuletzt kamen im Schnitt {energy} kWh pro Tag vom Dach; zuvor waren es {baseline} kWh."
+        ],
+        "lower": [
+          "Die letzten 3 vollständigen Tage waren im Schnitt {pct} % schwächer als die 3 davor.",
+          "Zuletzt waren es im Schnitt {energy} kWh pro Tag statt zuvor {baseline} kWh."
+        ]
+      },
+      "semantic": "trend_3v3"
+    },
+    {
+      "id": "NIGHT_STATUS",
+      "priority": 30,
+      "condition": "Before valid sunrise, or conservative night-clock fallback if fresh zero-production observations. Sunrise time only when known.",
+      "variants": {
+        "sunrise_known": [
+          "Die Anlage hat Nachtpause. Sonnenaufgang ist heute um {sunrise} Uhr.",
+          "Die Sonne hat noch nicht eingestempelt. Sonnenaufgang ist um {sunrise} Uhr.",
+          "Noch ist es vor Sonnenaufgang. Ab {sunrise} Uhr wird es interessant fürs Dach."
+        ],
+        "generic": [
+          "Die Nacht gehört dem Stromnetz und gegebenenfalls der Batterie. Das Dach wartet aufs Tageslicht.",
+          "Der Tageszähler beginnt wieder bei null. Die Sonne lässt noch auf sich warten."
+        ]
+      }
+    },
+    {
+      "id": "WAITING_STATUS",
+      "priority": 30,
+      "condition": "After known sunrise, fresh daily energy <0.1 kWh and PV power <0.1 kW; late branch >=90 min after sunrise.",
+      "variants": {
+        "sunrise_known": [
+          "Sonnenaufgang war um {sunrise} Uhr. Der erste messbare Solarstrom lässt noch auf sich warten.",
+          "Die Sonne ist bereits aufgegangen. Die Anlage wartet noch auf genügend Licht."
+        ],
+        "late": [
+          "Die Anlage hat heute noch keine nennenswerte Solarproduktion erreicht.",
+          "Auch nach Sonnenaufgang steht der Tageszähler noch unter 0,1 kWh."
+        ]
+      }
+    },
+    {
+      "id": "TECH_CONTEXT",
+      "priority": 10,
+      "condition": "Only with fresh data before production. Never claim chart empty unless no completed buckets.",
+      "variants": {
+        "default": [
+          "Der Tageschart nutzt abgeschlossene 5-Minuten-Werte. Die jüngsten Minuten erscheinen deshalb erst etwas später.",
+          "Die Tagesbilanz beginnt um Mitternacht neu. Gestern bleibt in der Solarstatistik erhalten."
+        ],
+        "empty_chart": [
+          "Der Tageschart wartet noch auf den ersten abgeschlossenen 5-Minuten-Wert."
+        ]
+      }
+    },
+    {
+      "id": "ZERO_DAY_COMPLETE",
+      "priority": 45,
+      "condition": "After sunset, fresh valid daily yield <0.1 kWh; not missing or stale data.",
+      "variants": {
+        "default": [
+          "Heute blieb der Tagesertrag unter 0,1 kWh. Morgen startet ein neuer Solartag.",
+          "Der heutige Solartag geht ohne nennenswerten Ertrag zu Ende."
+        ]
+      },
+      "phase": "after_sunset"
+    }
+  ]
+}
