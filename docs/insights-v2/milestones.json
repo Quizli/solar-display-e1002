@@ -1,0 +1,181 @@
+{
+  "version": 2,
+  "locale": "de-CH",
+  "events": [
+    {
+      "id": "OPERATING_DAY",
+      "priority": 70,
+      "trigger": "Elapsed Zurich calendar days since confirmed commissioning date match threshold; do not infer commissioning date from monitoring.",
+      "thresholds": [
+        30,
+        50,
+        100,
+        200,
+        500,
+        1000
+      ],
+      "repeat_every": 1000,
+      "event_key": "OPERATING_DAY:{days}",
+      "variants": {
+        "default": [
+          "Seit {days} Tagen kommt hier Solarstrom vom Dach.",
+          "{days} Tage Solarstrom vom Dach. Der Zähler läuft weiter.",
+          "Die Anlage ist seit genau {days} Tagen in Betrieb."
+        ],
+        "d100": [
+          "100 Tage Solarstrom vom Dach. Heute wird das Anlagenalter erstmals dreistellig."
+        ],
+        "d1000": [
+          "1’000 Tage Solarstrom vom Dach. Vierstellig!"
+        ]
+      }
+    },
+    {
+      "id": "ANNIVERSARY",
+      "priority": 90,
+      "trigger": "Exact local calendar anniversary, Feb 29 -> Feb 28 in non-leap years.",
+      "event_key": "ANNIVERSARY:{years}",
+      "variants": {
+        "first": [
+          "Ein Jahr Solarstrom vom Dach. Heute ist der erste Geburtstag der Anlage.",
+          "Die Solaranlage wird heute ein Jahr alt."
+        ],
+        "later": [
+          "Heute wird die Solaranlage {years} Jahre alt.",
+          "Seit genau {years} Jahren kommt hier Solarstrom vom Dach.",
+          "{years} Jahre Solarstrom. Ferien hat die Anlage noch nie beantragt."
+        ]
+      }
+    },
+    {
+      "id": "LIFETIME_ENERGY",
+      "priority": 95,
+      "trigger": "Verified first upward crossing of threshold since configured commissioning baseline; require continuous valid cumulative meter; no retroactive celebration.",
+      "thresholds_kwh": [
+        1000,
+        2000,
+        5000,
+        10000,
+        20000,
+        25000,
+        50000,
+        100000,
+        250000,
+        500000,
+        1000000
+      ],
+      "repeat_every_kwh_after_last": 1000000,
+      "event_key": "LIFETIME_ENERGY:{threshold}",
+      "variants": {
+        "default": [
+          "Die Anlage hat heute {mwh} MWh Solarstrom seit Inbetriebnahme erreicht.",
+          "{kwh} kWh vom Dach seit Inbetriebnahme. Diese Marke ist heute gefallen.",
+          "Meilenstein: {mwh} MWh Solarstrom vom Dach seit dem Start."
+        ],
+        "mwh1": [
+          "Die erste Megawattstunde ist geschafft: 1’000 kWh Solarstrom."
+        ],
+        "mwh10": [
+          "10’000 kWh Solarstrom seit dem Start. Der Gesamtertrag ist jetzt fünfstellig."
+        ],
+        "mwh100": [
+          "100’000 kWh Solarstrom seit dem Start. Heute wird sechsstellig gezählt."
+        ]
+      }
+    },
+    {
+      "id": "DAILY_RECORD",
+      "priority": 100,
+      "trigger": "Fresh qualified current-day running yield exceeds the previous maximum of at least two qualified earlier days by more than 0.1 kWh; one event per local day.",
+      "event_key": "DAILY_RECORD:{date_iso}",
+      "semantic": "record",
+      "variants": {
+        "default": [
+          "Neuer Tagesrekord seit Messbeginn: {energy} kWh. Bisher: {old_record} kWh.",
+          "{energy} kWh – so viel Solarstrom gab es an keinem zuvor vollständig erfassten Tag.",
+          "Rekordtag: Heute sind bereits {energy} kWh zusammengekommen. Bisher: {old_record} kWh."
+        ]
+      }
+    },
+    {
+      "id": "PRODUCTION_BARRIER",
+      "priority": 80,
+      "trigger": "First verified attainment >= threshold since qualified monitoring began; current day qualifies through now.",
+      "thresholds_kwh": [
+        100,
+        120,
+        140,
+        150
+      ],
+      "event_key": "PRODUCTION_BARRIER:{threshold}",
+      "variants": {
+        "default": [
+          "Zum ersten Mal seit Messbeginn die {threshold}-kWh-Tagesmarke erreicht.",
+          "Premiere seit Messbeginn: Die Anlage erreicht erstmals {threshold} kWh an einem erfassten Tag.",
+          "Heute sind erstmals {threshold} kWh an einem erfassten Tag zusammengekommen."
+        ]
+      }
+    },
+    {
+      "id": "HIGH_YIELD_COUNT",
+      "priority": 75,
+      "trigger": "Yesterday qualified and >100 kWh; accumulated count exactly reaches threshold. Evaluate on following local day.",
+      "thresholds": [
+        10,
+        25,
+        50,
+        100,
+        200,
+        500
+      ],
+      "event_key": "HIGH_YIELD_COUNT:{count}",
+      "variants": {
+        "default": [
+          "Die Statistik zählt nun {count} vollständig erfasste Tage mit mehr als 100 kWh.",
+          "Gestern kam Tag Nummer {count} mit mehr als 100 kWh in der Solarstatistik dazu.",
+          "{count} erfasste Tage mit mehr als 100 kWh Solarstrom. Eine runde Zahl."
+        ],
+        "c10": [
+          "Zehn Tage mit mehr als 100 kWh. Gestern kam Nummer zehn dazu."
+        ]
+      }
+    },
+    {
+      "id": "HIGH_YIELD_STREAK",
+      "priority": 65,
+      "trigger": "Run of consecutive qualified calendar days >100 kWh through yesterday reaches threshold. Missing days break run.",
+      "thresholds": [
+        3,
+        5,
+        7,
+        10
+      ],
+      "event_key": "HIGH_YIELD_STREAK:{run_start}:{days}",
+      "semantic": "streak",
+      "variants": {
+        "default": [
+          "{days} Tage in Folge mit mehr als 100 kWh. Das Dach hat gerade einen Lauf.",
+          "An {days} Tagen hintereinander kamen jeweils mehr als 100 kWh vom Dach.",
+          "Bis gestern: {days} Tage am Stück mit mehr als 100 kWh."
+        ],
+        "d3": [
+          "Hattrick: drei Tage in Folge mit mehr als 100 kWh."
+        ]
+      }
+    },
+    {
+      "id": "STREAK_RECORD",
+      "priority": 85,
+      "trigger": "Yesterday extended contiguous qualifying >100-kWh run to a new historical maximum, at least 3 days; compare against earlier runs and previous length. Suppress overlapping HIGH_YIELD_STREAK.",
+      "event_key": "STREAK_RECORD:{run_start}:{days}",
+      "semantic": "streak",
+      "variants": {
+        "default": [
+          "Neue Bestserie seit Messbeginn: {days} Tage in Folge mit mehr als 100 kWh.",
+          "So lange hielt eine Serie über 100 kWh seit Messbeginn noch nie: {days} Tage am Stück.",
+          "Serienrekord: An {days} aufeinanderfolgenden Tagen kamen jeweils mehr als 100 kWh vom Dach."
+        ]
+      }
+    }
+  ]
+}
