@@ -1,0 +1,282 @@
+{
+  "version": 2,
+  "locale": "de-CH",
+  "source_url": "https://www.zh.ch/de/wirtschaft-arbeit/arbeitsbedingungen/arbeitsssicherheit-gesundheitsschutz/arbeits-ruhezeiten/feiertage.html",
+  "notes": "Nine statutory holidays according to the canton; customary/cultural events explicitly separate. Astronomical dates require verified tables or calculation; skip unknown dates. Calendar specials occupy one normal insight slot in morning and at most one daytime slot, never override a milestone.",
+  "rules": [
+    {
+      "id": "NEW_YEAR",
+      "date_rule": "01-01",
+      "classification": "ZH_statutory",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Frohes neues Jahr! Die Solaranlage startet in ihren ersten Solartag des Jahres.",
+        "Neues Jahr, neuer Tageszähler. Das Dach beginnt wie immer bei null."
+      ]
+    },
+    {
+      "id": "BERCHTOLD",
+      "date_rule": "01-02",
+      "classification": "ZH_customary",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Heute ist Berchtoldstag. Das Dach kennt keinen Brückentag."
+      ]
+    },
+    {
+      "id": "GOOD_FRIDAY",
+      "date_rule": "Easter Sunday - 2 days",
+      "classification": "ZH_statutory",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Heute ist Karfreitag. Das Dach arbeitet, wenn die Sonne mitspielt."
+      ]
+    },
+    {
+      "id": "EASTER",
+      "date_rule": "Easter Sunday",
+      "classification": "cultural",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Frohe Ostern! Ob die Sonne heute auch etwas ins Nest legt?",
+        "Ostern auf dem Kalender. Das Dach sucht Sonnenstrahlen statt Ostereier."
+      ]
+    },
+    {
+      "id": "EASTER_MONDAY",
+      "date_rule": "Easter Sunday + 1 day",
+      "classification": "ZH_statutory",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Ostermontag. Für die Solaranlage bleibt es ein ganz normaler Arbeitstag."
+      ]
+    },
+    {
+      "id": "LABOUR_DAY",
+      "date_rule": "05-01",
+      "classification": "ZH_statutory",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Heute ist Tag der Arbeit. Für die Solaranlage gilt weiterhin: arbeiten, sobald genug Licht da ist.",
+        "1. Mai. Das Dach hat keine Gewerkschaft, aber einen Sonnenaufgang."
+      ]
+    },
+    {
+      "id": "ASCENSION",
+      "date_rule": "Easter Sunday + 39 days",
+      "classification": "ZH_statutory",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Heute ist Auffahrt. Für den Solarertrag wäre eine steigende Kurve durchaus passend."
+      ]
+    },
+    {
+      "id": "WHIT_MONDAY",
+      "date_rule": "Easter Sunday + 50 days",
+      "classification": "ZH_statutory",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Heute ist Pfingstmontag. Das Dach macht keine Feiertagspause."
+      ]
+    },
+    {
+      "id": "NATIONAL_DAY",
+      "date_rule": "08-01",
+      "classification": "ZH_statutory",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "1. August. Heute gibt es hoffentlich auch etwas Schweizer Strom vom eigenen Dach.",
+        "Bundesfeiertag: Das Dach hat keinen freien Tag, solange die Sonne mitspielt."
+      ]
+    },
+    {
+      "id": "CHRISTMAS_EVE",
+      "date_rule": "12-24",
+      "classification": "cultural",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Heute ist Heiligabend. Für ein paar Sonnenstrahlen wäre auch unter dem Weihnachtsbaum noch Platz.",
+        "Heiligabend. Die Sonne hält sich nicht an den Festtagskalender."
+      ]
+    },
+    {
+      "id": "CHRISTMAS",
+      "date_rule": "12-25",
+      "classification": "ZH_statutory",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Frohe Weihnachten! Das Dach liefert, was der Winterhimmel hergibt.",
+        "Weihnachten auf dem Kalender. Die Sonne entscheidet selbst, was sie beisteuert."
+      ]
+    },
+    {
+      "id": "BOXING_DAY",
+      "date_rule": "12-26",
+      "classification": "ZH_statutory",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Heute ist Stephanstag. Die Solaranlage hat keinen zweiten Weihnachtsfeiertag."
+      ]
+    },
+    {
+      "id": "NEW_YEAR_EVE",
+      "date_rule": "12-31",
+      "classification": "cultural",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Silvester. Heute endet nicht nur ein Solartag, sondern auch ein Kalenderjahr.",
+        "Der letzte Solartag des Jahres. Um Mitternacht beginnt die Tagesbilanz wieder bei null."
+      ]
+    },
+    {
+      "id": "LEAP_DAY",
+      "date_rule": "02-29 in leap years",
+      "classification": "calendar",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Schalttag: Dieses Jahr hat einen zusätzlichen Tag für Solarstrom.",
+        "Heute ist der 29. Februar. Ein zusätzlicher Solartag im Kalender."
+      ]
+    },
+    {
+      "id": "DST_START",
+      "date_rule": "Europe/Zurich actual UTC offset transition from standard to summer time",
+      "classification": "calendar",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Heute beginnt die Sommerzeit. Die Sonne hält sich weiterhin nicht an die Uhr.",
+        "Die Uhr springt eine Stunde vor. Für die Sonne ist es ein ganz normaler Tagesablauf."
+      ]
+    },
+    {
+      "id": "DST_END",
+      "date_rule": "Europe/Zurich actual UTC offset transition from summer to standard time",
+      "classification": "calendar",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Heute endet die Sommerzeit. Die Sonne hat die Uhr nicht zurückgestellt.",
+        "Die Uhr bekommt eine Stunde geschenkt. Das Tageslicht deshalb nicht."
+      ]
+    },
+    {
+      "id": "SPRING_EQUINOX",
+      "date_rule": "Verified astronomical event local date, never fixed March 21",
+      "classification": "astronomy",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Frühlings-Tagundnachtgleiche: Tag und Nacht sind jetzt ungefähr gleich lang.",
+        "Astronomischer Frühlingsbeginn. Die hellere Hälfte des Jahres steht bevor."
+      ]
+    },
+    {
+      "id": "SUMMER_SOLSTICE",
+      "date_rule": "Verified astronomical event local date",
+      "classification": "astronomy",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Sommersonnenwende: Rund um heute ist das Tageslichtfenster am längsten.",
+        "Heute ist Sommersonnenwende. Mehr Tageslicht gibt es im Jahr kaum."
+      ]
+    },
+    {
+      "id": "AUTUMN_EQUINOX",
+      "date_rule": "Verified astronomical event local date",
+      "classification": "astronomy",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Herbst-Tagundnachtgleiche: Tag und Nacht sind jetzt ungefähr gleich lang.",
+        "Astronomischer Herbstbeginn. Die längeren Nächte rücken näher."
+      ]
+    },
+    {
+      "id": "WINTER_SOLSTICE",
+      "date_rule": "Verified astronomical event local date",
+      "classification": "astronomy",
+      "priority": 90,
+      "phase": "day",
+      "variants": [
+        "Wintersonnenwende: Rund um heute ist das Tageslichtfenster am kürzesten.",
+        "Heute ist Wintersonnenwende. Im Laufe des Winters werden die Tage wieder länger."
+      ]
+    },
+    {
+      "id": "NATIONAL_DAY_EVE",
+      "date_rule": "07-31",
+      "classification": "calendar",
+      "priority": 65,
+      "phase": "morning",
+      "variants": [
+        "Morgen ist der 1. August. Die Sonne hat für heute trotzdem ihr eigenes Programm."
+      ]
+    },
+    {
+      "id": "CHRISTMAS_EVE_EVE",
+      "date_rule": "12-23",
+      "classification": "calendar",
+      "priority": 65,
+      "phase": "morning",
+      "variants": [
+        "Morgen ist Heiligabend. Auf dem Dach läuft bis dahin der ganz normale Winterbetrieb."
+      ]
+    },
+    {
+      "id": "DECEMBER_START",
+      "date_rule": "12-01",
+      "classification": "calendar",
+      "priority": 60,
+      "phase": "morning",
+      "variants": [
+        "Der Dezember beginnt. Die Tage sind kurz, aber das Dach nimmt jeden Sonnenstrahl mit."
+      ]
+    },
+    {
+      "id": "MARCH_START",
+      "date_rule": "03-01",
+      "classification": "calendar",
+      "priority": 60,
+      "phase": "morning",
+      "variants": [
+        "Der meteorologische Frühling beginnt. Das Zeitfenster mit Tageslicht wächst."
+      ]
+    },
+    {
+      "id": "JUNE_START",
+      "date_rule": "06-01",
+      "classification": "calendar",
+      "priority": 60,
+      "phase": "morning",
+      "variants": [
+        "Meteorologischer Sommerbeginn. Die längsten Solartage des Jahres stehen bevor."
+      ]
+    },
+    {
+      "id": "SEPTEMBER_START",
+      "date_rule": "09-01",
+      "classification": "calendar",
+      "priority": 60,
+      "phase": "morning",
+      "variants": [
+        "Der meteorologische Herbst beginnt. Die Tage werden spürbar kürzer."
+      ]
+    }
+  ]
+}
