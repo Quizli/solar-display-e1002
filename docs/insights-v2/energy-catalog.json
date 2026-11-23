@@ -1,7 +1,7 @@
 {
   "version": 2,
   "locale": "de-CH",
-  "notes": "Redaktionell freigegebener Entwurf zur Implementierung; nicht mit Live-Messwerten verwechseln. Alle Verbrauchsangaben sind illustrative Annahmen, sofern nicht als Physik oder belegte Nennleistung ausgewiesen. {when} = heute/gestern. Keine Zeilenumbrüche im Quelltext.",
+  "notes": "Curated implementation content. All appliance figures are illustrative assumptions, not measured consumption. {when} is heute/gestern; {duration} includes its unit; {quantity} may be fractional; counts/distances are approximate. Source text contains no forced line breaks.",
   "energy": [
     {
       "id": "sewing_machine",
@@ -31,7 +31,7 @@
         "N05"
       ],
       "variants": [
-        "Ein 800-W-Staubsauger könnte mit {energy} kWh von {when} rund {duration} saugen.",
+        "Ein Staubsauger mit 800 W könnte mit {energy} kWh von {when} rund {duration} saugen.",
         "Mit {energy} kWh von {when} wäre ein 800-W-Staubsauger rund {duration} beschäftigt."
       ]
     },
@@ -117,8 +117,8 @@
       "basis": "Illustrativer Energiebedarf: 0.6 kWh pro Einheit",
       "legacy_ids": [],
       "variants": [
-        "Ein Kühlschrank mit 0,6 kWh Tagesbedarf könnte von {energy} kWh von {when} rund {count} Tage leben.",
-        "{energy} kWh von {when} reichen für rund {count} Kühlschranktage à 0,6 kWh."
+        "{energy} kWh von {when} reichen für rund {count} Kühlschranktage à 0,6 kWh.",
+        "Ein Kühlschrank mit 0,6 kWh Tagesbedarf käme mit {energy} kWh von {when} rund {count} Tage aus."
       ]
     },
     {
@@ -254,7 +254,7 @@
       "legacy_ids": [],
       "variants": [
         "Eine 1,2-kW-Popcornmaschine könnte mit {energy} kWh von {when} rund {duration} heizen.",
-        "Mit {energy} kWh von {when} wäre eine 1,2-kW-Popcornmaschine rund {duration} im Einsatz."
+        "Mit {energy} kWh von {when} hätte eine 1,2-kW-Popcornmaschine rund {duration} Heizzeit."
       ]
     },
     {
@@ -665,7 +665,7 @@
         "N09"
       ],
       "variants": [
-        "Ein 200-W-Scheinwerfer könnte mit {energy} kWh von {when} rund {duration} ein Bild beleuchten.",
+        "Ein 200-W-Scheinwerfer könnte mit {energy} kWh von {when} rund {duration} ein Kunstwerk beleuchten.",
         "{energy} kWh von {when}: rund {duration} Licht für ein Kunstwerk bei 200 W."
       ]
     },
@@ -845,7 +845,7 @@
       "basis": "Physik: m*g*h, 1’000 kg, 9,81 m/s², 100 m, 100 % Wirkungsgrad.",
       "legacy_ids": [],
       "variants": [
-        "{energy} kWh von {when} könnten eine Tonne Last rund {count} Mal 100 m hochheben (ideal).",
+        "{energy} kWh von {when}: Eine Tonne Last könnte theoretisch rund {count} Mal 100 m hochgehoben werden.",
         "Ohne Verluste reichen {energy} kWh von {when} für rund {count} Hübe einer Tonne um 100 m."
       ]
     },
@@ -877,8 +877,8 @@
         "X01"
       ],
       "variants": [
-        "Bei Nennleistung erzeugt Gösgen {energy} kWh von {when} in rund {duration}.",
-        "{energy} kWh von {when}: Das AKW Gösgen bräuchte bei Nennleistung rund {duration}."
+        "Bei Nennleistung würde das AKW Gösgen {energy} kWh von {when} in rund {duration} erzeugen.",
+        "{energy} kWh von {when}: Das AKW Gösgen erzeugt diese Menge bei Nennleistung in rund {duration}."
       ],
       "source_url": "https://www.kkg.ch/de/technik/technische-hauptdaten.html"
     },
@@ -894,10 +894,10 @@
         "X11"
       ],
       "variants": [
-        "Beim LHC samt Experimenten entsprechen {energy} kWh von {when} rund {duration} Jahresmittel-Verbrauch.",
-        "{energy} kWh von {when}: rund {duration} Strombedarf des LHC samt Diensten im Jahresmittel."
+        "{energy} kWh von {when}: So viel Strom benötigt der LHC samt Experimenten im Jahresmittel in rund {duration}.",
+        "Im Jahresmittel braucht der LHC samt Experimenten für {energy} kWh rund {duration}."
       ],
-      "source_url": "https://home.cern/resources/faqs/large-hadron-collider-dangerous"
+      "source_url": "https://home.cern/science/accelerators/large-hadron-collider/"
     },
     {
       "id": "wind_turbine",
@@ -1008,7 +1008,7 @@
       "legacy_ids": [],
       "variants": [
         "Eine elektrische Uhr mit 5 W könnte mit {energy} kWh von {when} rund {duration} laufen.",
-        "{energy} kWh von {when} würden einer 5-W-Uhr rund {duration} Zeit geben."
+        "{energy} kWh von {when} reichen für rund {duration} Laufzeit einer 5-W-Uhr."
       ]
     },
     {
@@ -1051,6 +1051,76 @@
       "variants": [
         "Ein 50-W-Mähroboter könnte mit {energy} kWh von {when} rund {duration} mähen.",
         "{energy} kWh von {when} würden einen 50-W-Mähroboter rund {duration} beschäftigen."
+      ]
+    },
+    {
+      "id": "chocolate_energy",
+      "family": "science",
+      "type": "quantity",
+      "kwh_per_unit": 6.392222222222222,
+      "min_kwh": 2,
+      "max_kwh": null,
+      "basis": "Illustrative food energy content of chocolate, 550 kcal/100 g. Pure energy equivalence, not conversion to electricity.",
+      "legacy_ids": [],
+      "variants": [
+        "Rein energetisch entsprechen {energy} kWh von {when} rund {quantity} kg Schokolade (550 kcal/100 g).",
+        "{energy} kWh von {when} entsprechen dem Energiegehalt von rund {quantity} kg Schokolade à 550 kcal/100 g."
+      ]
+    },
+    {
+      "id": "sprint_car",
+      "family": "science",
+      "type": "uses",
+      "kwh_per_unit": 0.02679183813443073,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Kinetic energy of a 1000 kg mass accelerated from rest to 50 km/h; ideal conversion, no losses.",
+      "legacy_ids": [],
+      "variants": [
+        "Ohne Verluste könnte man mit {energy} kWh von {when} einen 1-t-Wagen rund {count} Mal auf 50 km/h beschleunigen.",
+        "{energy} kWh von {when}: theoretisch {count} Starts von 0 auf 50 km/h für ein 1-t-Auto."
+      ]
+    },
+    {
+      "id": "lift_person_alps",
+      "family": "science",
+      "type": "uses",
+      "kwh_per_unit": 0.6104,
+      "min_kwh": 1,
+      "max_kwh": null,
+      "basis": "Ideal potential energy for lifting an 80 kg mass vertically by 2800 m; no losses, no geographical claim.",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when} könnten eine 80-kg-Person theoretisch rund {count} Mal 2’800 Höhenmeter anheben.",
+        "Ohne Verluste reichen {energy} kWh von {when} für rund {count} Aufstiege à 2’800 Höhenmeter einer 80-kg-Person."
+      ]
+    },
+    {
+      "id": "drone",
+      "family": "curious",
+      "type": "runtime",
+      "power_w": 100,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative hypothetical constant electrical power demand of a small drone, 100 W.",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 100-W-Drohne könnte mit {energy} kWh von {when} rund {duration} in der Luft bleiben.",
+        "{energy} kWh von {when}: rund {duration} Drohnenflug bei konstant 100 W."
+      ]
+    },
+    {
+      "id": "battery_equivalent",
+      "family": "local",
+      "type": "quantity",
+      "kwh_per_unit": 15.795,
+      "min_kwh": 3,
+      "max_kwh": null,
+      "basis": "Reference: nominal Fronius Reserva storage capacity approximately 15.8 kWh; energy equivalence only; not actual charge cycles or usable capacity.",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when} entsprechen rund {quantity} Mal dem Nenninhalt der 15,8-kWh-Batterie.",
+        "Rein energetisch: {energy} kWh von {when} entsprechen rund {quantity} Batteriefüllungen à 15,8 kWh."
       ]
     }
   ],
