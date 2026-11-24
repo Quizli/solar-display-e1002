@@ -310,6 +310,7 @@ def build_live_view(
         "weather_icon_variant": weather_variant,
         "co2_savings_kg": co2_savings,
         "story_line_1": story.line_1, "story_line_2": story.line_2,
+        "story_fact_id": story.fact_id, "story_family": story.family,
         "day_yield_kwh": day_yield,
         "self_consumption_percent": _self_consumption(
             database.aggregates_for_local_day(local_day)
