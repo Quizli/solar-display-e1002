@@ -13,7 +13,23 @@ Die Vergleichstafel zeigt die vier Symbole in ihrer Anzeigegrösse von 48 × 48 
 | Schweizer Bundesfeiertag | [SVG](previews/preview-calendar.svg) | [PNG](screenshots/preview-calendar.png) |
 | Veraltete Messwerte | [SVG](previews/preview-warning.svg) | [PNG](screenshots/preview-warning.png) |
 
-## Temporär auf dem E1002 ansehen
+## Vorschauen über den bestehenden Nginx auf der Synology öffnen
+
+Der Compose-Dienst `web` liefert Dateien aus `./publish/` auf Port 8088 aus. Auf der NAS im Verzeichnis der laufenden `docker-compose.yml` die sechs Vorschau-SVGs aus diesem Branch in ein eigenes Unterverzeichnis kopieren. Falls die Vorschauen auf einem anderen Rechner liegen, lassen sie sich auch per DSM File Station in denselben Zielordner hochladen.
+
+```sh
+mkdir -p ./publish/badge-previews
+cp ./docs/epaper-badges/previews/*.svg ./publish/badge-previews/
+chmod 755 ./publish/badge-previews
+chmod 644 ./publish/badge-previews/*.svg
+curl -fI http://127.0.0.1:8088/badge-previews/badge-preview.svg
+```
+
+Die Abfrage auf der NAS sollte `200 OK` und `Content-Type: image/svg+xml` liefern. Am E1002 die bisherige Dashboard-URL notieren und für den Test `http://<NAS-IP>:8088/badge-previews/badge-preview.svg` öffnen. Für eine Einzelansicht den Dateinamen austauschen, etwa gegen `preview-record.svg`. Die Dateien sind sofort verfügbar. Der Publisher schreibt währenddessen wie gewohnt nach `./publish/dashboard.svg`.
+
+Nach der Sichtprüfung am E1002 die ursprüngliche Dashboard-URL wieder öffnen (standardmässig `http://<NAS-IP>:8088/dashboard.svg`). Bei Bedarf anschliessend nur den Ordner `publish/badge-previews` in File Station entfernen.
+
+## Alternative mit temporärem HTTP-Server
 
 1. Auf einem Rechner im selben Netz die Vorschaudateien bereitstellen. Im Repository-Stamm erzeugen diese Befehle sechs SVGs in einem separaten Verzeichnis und starten dafür einen temporären HTTP-Server.
 
