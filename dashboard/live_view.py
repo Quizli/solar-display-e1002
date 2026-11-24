@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import logging
 import math
@@ -7,11 +8,10 @@ from solar_data.storage import POWER_FIELDS, SolarDatabase, _aware_utc
 from solar_data.timezones import ZURICH
 from .chart import build_chart
 from .weather import weather_icon_variant
-from .facts import (FactContext, Story, build_story_from_context,
-                    eligible_facts_for_hour, hour_key, story_for_catalog_fact)
-from .facts.catalog import FACTS_BY_ID, has_eligible_fact_for_energy
-from .facts.history import (HISTORICAL_IDS, decode_and_render,
-                            eligible_historical_candidates, render_historical)
+from .facts import FactContext, Story, hour_key
+from .facts.milestones import active_events
+from .facts.selection import choose_history, choose_insight
+from .facts.statistics import history_candidates
 
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 MONTHS = ("", "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember")
@@ -76,15 +76,32 @@ def validate_co2_factor(value):
     return value
 
 
-def build_fact_context(database, now, today_energy_kwh, solar_power_kw, sun=None):
+def build_fact_context(
+    database,
+    now,
+    today_energy_kwh,
+    solar_power_kw,
+    sun=None,
+    values=None,
+    aggregates=None,
+):
     """Collect the shared inputs for facts and historical comparisons."""
     now_local = now.astimezone(ZURICH)
-    yesterday = database.daily_energy(now_local.date() - timedelta(days=1))
-    yesterday_energy = yesterday.energy_today_kwh if yesterday and yesterday.energy_today_kwh >= 0 else None
+    if values is None:
+        values = {
+            item.local_day: item.energy_kwh
+            for item in database.completed_record_daily_yields(now_local.date())
+        }
+    yesterday_energy = values.get(now_local.date() - timedelta(days=1))
+    if aggregates is None:
+        aggregates = database.aggregates_for_local_day(now_local.date())
     anchors = {}
     anchor_buckets = {}
-    for aggregate in database.aggregates_for_local_day(now_local.date()):
-        if not has_eligible_fact_for_energy(aggregate.energy_today_kwh):
+    for aggregate in aggregates:
+        if (
+            aggregate.energy_today_kwh < 0.1
+            or _aware_utc(aggregate.bucket_start) + timedelta(minutes=5) > now
+        ):
             continue
         bucket_local = _aware_utc(aggregate.bucket_start).astimezone(ZURICH)
         key = hour_key(bucket_local)
@@ -92,7 +109,9 @@ def build_fact_context(database, now, today_energy_kwh, solar_power_kw, sun=None
             anchors[key] = aggregate.energy_today_kwh
             anchor_buckets[key] = aggregate.bucket_start
     current_hour = now_local.replace(minute=0, second=0, microsecond=0)
-    previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
+    previous_hour = (
+        current_hour.astimezone(timezone.utc) - timedelta(hours=1)
+    ).astimezone(ZURICH)
     return FactContext(
         now_local=now_local,
         sunrise=sun.sunrise if sun else None,
@@ -103,203 +122,49 @@ def build_fact_context(database, now, today_energy_kwh, solar_power_kw, sun=None
         weather_code=sun.weather_code if sun else None,
         selection_energy_kwh=anchors.get(hour_key(current_hour)),
         previous_hour_selection_energy_kwh=anchors.get(hour_key(previous_hour)),
+        sunshine_hours=getattr(sun, "sunshine_hours", None),
+        previous_daylight_seconds=getattr(sun, "previous_daylight_seconds", None),
+        has_buckets=bool(aggregates),
         selection_energy_by_hour=anchors,
         selection_bucket_by_hour=anchor_buckets,
     )
 
 
-def build_story(database, now, today_energy_kwh, solar_power_kw, sun=None,
-                persist_selection=True, context=None,
-                historical_candidates=None):
-    """Select the renderer-independent, hourly persisted dashboard story."""
+def build_story(
+    database,
+    now,
+    today_energy_kwh,
+    solar_power_kw,
+    sun=None,
+    persist_selection=True,
+    context=None,
+    historical_candidates=None,
+):
+    day = now.astimezone(ZURICH).date()
+    values = {
+        r.local_day: r.energy_kwh for r in database.completed_record_daily_yields(day)
+    }
     context = context or build_fact_context(
-        database, now, today_energy_kwh, solar_power_kw, sun)
-    now_local = context.now_local
-    current_hour = now_local.replace(minute=0, second=0, microsecond=0)
-    previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
-    anchors = context.selection_energy_by_hour
-    initial = build_story_from_context(context)
-    key = hour_key(current_hour)
-    if historical_candidates is None:
-        historical_candidates = eligible_historical_candidates(database, context)
-    pinned_records = [item for item in historical_candidates
-                      if item.fact_id == "HIST_RECORD"]
-    if pinned_records:
-        current = next((item for item in pinned_records
-                        if item.context.get("period") == "today"), None)
-        rendered = render_historical(
-            "HIST_RECORD", context, (current or pinned_records[0]).context)
-        if rendered:
-            candidate = current or pinned_records[0]
-            if persist_selection:
-                database.store_fact_selection(
-                    key, current_hour, "HIST_RECORD", "history",
-                    context.selection_energy_kwh,
-                    context.selection_bucket_by_hour.get(key),
-                    context_json=candidate.context_json)
-            return Story(**{**rendered.__dict__,
-                            "selection_energy_kwh": context.selection_energy_kwh,
-                            "selection_bucket_start": context.selection_bucket_by_hour.get(
-                                hour_key(current_hour)),
-                            "selection_source": "pinned_record"})
-
-    morning_history = initial.phase in ("pre_sunrise", "morning_waiting")
-    if initial.family == "status" and not morning_history:
-        return initial
-    if not persist_selection:
-        return initial
-
-    previous = database.latest_fact_selection_before(current_hour)
-    previous_energy = (previous.selection_energy_kwh if previous else
-                       anchors.get(hour_key(previous_hour)))
-    stored = database.get_fact_selection(key)
-    if stored:
-        fact = FACTS_BY_ID.get(stored.fact_id)
-        if fact:
-            reused = story_for_catalog_fact(
-                context, fact, stored.selection_energy_kwh, previous_energy,
-                stored.selection_bucket_start, persisted=True, source="persisted")
-            if reused:
-                return reused
-        if stored.fact_id in HISTORICAL_IDS:
-            reused = decode_and_render(stored.fact_id, context, stored.context_json)
-            if reused:
-                return Story(**{**reused.__dict__,
-                                "selection_energy_kwh": stored.selection_energy_kwh,
-                                "selection_bucket_start": stored.selection_bucket_start,
-                                "selection_persisted": True,
-                                "selection_source": "persisted"})
-            LOGGER.warning("persisted historical fact %s has invalid context",
-                           stored.fact_id)
-            return initial
-
-    # A completed bucket for the new hour arrives a few minutes after the hour.
-    # Keep showing the immediately preceding real (UTC) hour in that short gap;
-    # using UTC here distinguishes both folds of the autumn clock change.
-    current_anchor = anchors.get(key)
-    bridge_age = now.astimezone(timezone.utc) - current_hour.astimezone(timezone.utc)
-    if (initial.phase == "active_production" and current_anchor is None and
-            timedelta(0) <= bridge_age <= timedelta(minutes=10)):
-        bridge_record = database.get_fact_selection(hour_key(previous_hour))
-        bridge_fact = FACTS_BY_ID.get(bridge_record.fact_id) if bridge_record else None
-        if bridge_fact:
-            bridged = story_for_catalog_fact(
-                context, bridge_fact, bridge_record.selection_energy_kwh,
-                bridge_record.selection_energy_kwh,
-                bridge_record.selection_bucket_start, persisted=True,
-                source="previous_hour_bridge")
-            if bridged:
-                return bridged
-        elif bridge_record and bridge_record.fact_id in HISTORICAL_IDS:
-            bridged = decode_and_render(
-                bridge_record.fact_id, context, bridge_record.context_json)
-            if bridged:
-                return Story(**{
-                    **bridged.__dict__,
-                    "selection_energy_kwh": bridge_record.selection_energy_kwh,
-                    "selection_bucket_start": bridge_record.selection_bucket_start,
-                    "selection_persisted": True,
-                    "selection_source": "previous_hour_bridge",
-                })
-
-    used_history = any(item.fact_id in HISTORICAL_IDS for item in
-                       database.fact_selections_for_local_day(now_local.date()))
-    if not used_history:
-        historical = historical_candidates
-        if historical:
-            candidate = historical[0]
-            rendered = render_historical(candidate.fact_id, context, candidate.context)
-            if rendered:
-                record = database.store_fact_selection(
-                    key, current_hour, candidate.fact_id, "history",
-                    (initial.selection_energy_kwh if initial.selection_energy_kwh is not None
-                     else context.yesterday_energy_kwh), initial.selection_bucket_start,
-                    context_json=candidate.context_json)
-                selected = decode_and_render(record.fact_id, context, record.context_json)
-                if selected:
-                    return Story(**{**selected.__dict__,
-                                    "selection_energy_kwh": record.selection_energy_kwh,
-                                    "selection_bucket_start": record.selection_bucket_start,
-                                    "selection_persisted": True,
-                                    "selection_source": "new"})
-
-    if initial.family in ("status", "technical"):
-        return initial
-
-    selection_energy = initial.selection_energy_kwh
-    candidates = eligible_facts_for_hour(
-        context, current_hour, selection_energy, initial.energy_kwh)
-    if not candidates:
-        return initial
-    used_today = {item.fact_id for item in
-                  database.fact_selections_for_local_day(now_local.date())
-                  if item.fact_id in FACTS_BY_ID}
-    used_yesterday = {item.fact_id for item in
-                      database.fact_selections_for_local_day(
-                          now_local.date() - timedelta(days=1))
-                      if item.fact_id in FACTS_BY_ID}
-    unused_both_other_family = [item for item in candidates
-                                if item[0].fact_id not in used_today
-                                and item[0].fact_id not in used_yesterday
-                                and (previous is None or
-                                     item[0].family != previous.family)]
-    unused_both = [item for item in candidates
-                   if item[0].fact_id not in used_today
-                   and item[0].fact_id not in used_yesterday]
-    unused_today_other_family = [item for item in candidates
-                                 if item[0].fact_id not in used_today
-                                 and (previous is None or
-                                      item[0].family != previous.family)]
-    unused_today = [item for item in candidates
-                    if item[0].fact_id not in used_today]
-    recent = database.recent_catalog_fact_selections(tuple(FACTS_BY_ID), 12)
-    recent_ids = {item.fact_id for item in recent}
-    previous_catalog = recent[0] if recent else None
-    def other_family(item):
-        return previous_catalog is None or item[0].family != previous_catalog.family
-    stages = (
-        [item for item in candidates if item[0].fact_id not in used_today
-         and item[0].fact_id not in recent_ids and other_family(item)],
-        [item for item in candidates if item[0].fact_id not in used_today
-         and item[0].fact_id not in recent_ids],
-        [item for item in candidates if item[0].fact_id not in used_today
-         and other_family(item)],
-        [item for item in candidates if item[0].fact_id not in used_today],
+        database, now, today_energy_kwh, solar_power_kw, sun, values
     )
-    selected_stage = next((stage for stage in stages if stage), None)
-    if selected_stage:
-        fact = next((item[0] for item in selected_stage
-                     if item[0].fact_id not in used_yesterday), selected_stage[0][0])
-    else:
-        all_history = database.recent_catalog_fact_selections(tuple(FACTS_BY_ID), 100000)
-        rank = _catalog_last_use_ranks(all_history)
-        pool = [item for item in candidates if other_family(item)] or candidates
-        fact = max(pool, key=lambda item: rank.get(item[0].fact_id, len(rank) + 1))[0]
-    record = database.store_fact_selection(
-        key, current_hour, fact.fact_id, fact.family, selection_energy,
-        initial.selection_bucket_start)
-    # INSERT OR IGNORE makes the first concurrent writer authoritative.
-    fact = FACTS_BY_ID.get(record.fact_id)
-    if fact is None:
-        return initial
-    return (story_for_catalog_fact(
-        context, fact, record.selection_energy_kwh, previous_energy,
-        record.selection_bucket_start, persisted=True, source="new") or initial)
+    history = history_candidates(values, day)
+    persist_selection = persist_selection and not database.read_only
+    events, after = active_events(database, context, values, persist_selection)
+    return choose_insight(
+        database, context, history, values, events, after, persist_selection
+    )
 
 
-def _catalog_last_use_ranks(newest_first):
-    """Map each catalogue id to its newest position without older overwrites."""
-    ranks = {}
-    for index, item in enumerate(newest_first):
-        ranks.setdefault(item.fact_id, index)
-    return ranks
-
-
-def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
-                    stale_seconds: float = 180.0, sun_result=None,
-                    co2_factor: float = 0.128,
-                    persist_fact_selection: bool = True,
-                    snapshot=_SNAPSHOT_UNSET) -> Dict[str, object]:
+def build_live_view(
+    database: SolarDatabase,
+    now: Optional[datetime] = None,
+    stale_seconds: float = 180.0,
+    sun_result=None,
+    co2_factor: float = 0.128,
+    persist_fact_selection: bool = True,
+    snapshot=_SNAPSHOT_UNSET,
+    commissioning=None,
+) -> Dict[str, object]:
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
@@ -347,22 +212,86 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
                if sun else None)
     weather_code = sun.weather_code if sun else None
     weather_variant = weather_icon_variant(weather_code)
+    values = {r.local_day: r.energy_kwh for r in database.completed_record_daily_yields(chart_local_day)}
+    histories = history_candidates(values, chart_local_day)
+    same_day = (
+        snapshot_timestamp
+        and snapshot_timestamp.astimezone(ZURICH).date() == chart_local_day
+    )
+    valid = freshness == "fresh" and same_day and snapshot_timestamp <= now_utc
+    write = bool(valid and persist_fact_selection and not database.read_only)
+    current_daily = (
+        daily
+        if local_day == chart_local_day
+        else database.daily_energy(chart_local_day)
+    )
+    current_energy = (
+        current_daily.energy_today_kwh if same_day and current_daily else None
+    )
+    forecast = (
+        sun
+        if sun
+        and sun.local_date == chart_local_day
+        and 0 <= sun_age <= getattr(sun_result, "max_age_seconds", 21600)
+        and sun_result.status in ("fresh", "cached")
+        else None
+    )
     fact_context = build_fact_context(
-        database, now_utc, day_yield, power["solar_power_kw"], sun)
-    historical_candidates = eligible_historical_candidates(database, fact_context)
-    story = build_story(database, now_utc, day_yield, power["solar_power_kw"], sun,
-                        persist_selection=(freshness == "fresh" and
-                                           persist_fact_selection),
-                        context=fact_context,
-                        historical_candidates=historical_candidates)
-    if freshness == "stale":
-        story = Story("STALE", "status", "Datenstand {} Uhr".format(local_timestamp.strftime("%H:%M")),
-                      "Aktualisierung der Solardaten prüfen", story.phase,
-                      story.energy_period, story.energy_kwh)
-    elif freshness == "missing":
-        story = Story("MISSING", "status", "Keine Solardaten verfügbar",
-                      "Datenerfassung prüfen", story.phase, story.energy_period,
-                      story.energy_kwh)
+        database,
+        now_utc,
+        current_energy,
+        snapshot.solar_power_kw if valid else None,
+        forecast,
+        values,
+        day_aggregates,
+    )
+    if valid:
+        start, _ = database._local_day_bounds(chart_local_day)
+        end = snapshot_timestamp.replace(
+            minute=snapshot_timestamp.minute // 5 * 5, second=0, microsecond=0
+        )
+        completed = [
+            (r.bucket_start, r.energy_today_kwh)
+            for r in day_aggregates
+            if _aware_utc(r.bucket_start) < end
+        ]
+        verified_yield = bool(
+            current_daily
+            and current_daily.complete
+            and completed
+            and database._qualify_record_day(chart_local_day, completed, start, end)
+        )
+        fact_context = replace(fact_context, complete_yield=verified_yield)
+        reliable = (
+            verified_yield
+            and all(a[1] <= b[1] for a, b in zip(completed, completed[1:]))
+            and current_energy >= completed[-1][1]
+        )
+        events, after = active_events(
+            database, fact_context, values, write, snapshot, reliable, commissioning
+        )
+        story = choose_insight(
+            database, fact_context, histories, values, events, after, write
+        )
+    elif not snapshot:
+        story = Story(
+            "MISSING",
+            "status",
+            "Keine Solardaten verfügbar",
+            "Datenerfassung prüfen",
+            "missing",
+            None,
+        )
+    else:
+        story = Story(
+            "STALE",
+            "status",
+            f"Datenstand {local_timestamp:%H:%M} Uhr",
+            "Aktualisierung der Solardaten prüfen",
+            "stale",
+            None,
+        )
+    historical = choose_history(database,fact_context,histories,story,write)
     display = dict(power)
     displayed_heat = max(0.0, power["heat_power_kw"] or 0.0)
     display.update({
@@ -392,7 +321,7 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "chart_battery_line": chart.battery_line,
     })
     return {
-        "_historical_candidates": historical_candidates,
+        "_historical_comparison": historical,
         "freshness": freshness,
         "latest_snapshot_timestamp": snapshot_timestamp.isoformat() if snapshot_timestamp else None,
         "power_timestamp": power_timestamp.isoformat() if power_timestamp else None,
@@ -402,6 +331,7 @@ def build_live_view(database: SolarDatabase, now: Optional[datetime] = None,
         "daily_energy": ({"source": daily.source, "complete": daily.complete} if daily else None),
         "story_status": {
             "fact_id": story.fact_id, "family": story.family, "phase": story.phase,
+            "variant": story.variant, "branch": story.branch, "event_id": story.event_key,
             "energy_period": story.energy_period, "energy_kwh": story.energy_kwh,
             "used_short_template": story.used_short_template,
             "line_1_width_px": story.line_1_width_px,

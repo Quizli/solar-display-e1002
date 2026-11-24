@@ -27,8 +27,11 @@ class SunData:
     weather_code: object = None
     weather_code_status: str = "missing"
 
+    previous_daylight_seconds: object = None
+
     def to_dict(self):
         return {
+            "previous_daylight_seconds": self.previous_daylight_seconds,
             "local_date": self.local_date.isoformat(),
             "sunrise": self.sunrise.isoformat(),
             "sunset": self.sunset.isoformat(),

@@ -1,0 +1,1210 @@
+{
+  "version": 2,
+  "locale": "de-CH",
+  "notes": "Curated implementation content. All appliance figures are illustrative assumptions, not measured consumption. {when} is heute/gestern; {duration} includes its unit; {quantity} may be fractional; counts/distances are approximate. Source text contains no forced line breaks.",
+  "energy": [
+    {
+      "id": "sewing_machine",
+      "family": "household",
+      "type": "runtime",
+      "power_w": 70,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 70 W",
+      "legacy_ids": [
+        "N06"
+      ],
+      "variants": [
+        "Eine 70-W-Nähmaschine könnte mit {energy} kWh von {when} rund {duration} laufen.",
+        "{energy} kWh von {when} reichen für rund {duration} an einer 70-W-Nähmaschine."
+      ]
+    },
+    {
+      "id": "vacuum",
+      "family": "household",
+      "type": "runtime",
+      "power_w": 800,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 800 W",
+      "legacy_ids": [
+        "N05"
+      ],
+      "variants": [
+        "Ein Staubsauger mit 800 W könnte mit {energy} kWh von {when} rund {duration} saugen.",
+        "Mit {energy} kWh von {when} wäre ein 800-W-Staubsauger rund {duration} beschäftigt."
+      ]
+    },
+    {
+      "id": "hair_dryer",
+      "family": "household",
+      "type": "runtime",
+      "power_w": 2000,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 2000 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 2-kW-Föhn könnte mit {energy} kWh von {when} rund {duration} blasen.",
+        "{energy} kWh von {when}: genug für rund {duration} mit einem 2-kW-Föhn."
+      ]
+    },
+    {
+      "id": "iron",
+      "family": "household",
+      "type": "runtime",
+      "power_w": 1500,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 1500 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein Bügeleisen mit 1,5 kW könnte mit {energy} kWh von {when} rund {duration} heizen.",
+        "{energy} kWh von {when} reichen für rund {duration} Bügeln bei konstant 1,5 kW."
+      ]
+    },
+    {
+      "id": "washing_machine",
+      "family": "household",
+      "type": "uses",
+      "kwh_per_unit": 0.5,
+      "min_kwh": 0.5,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.5 kWh pro Einheit",
+      "legacy_ids": [
+        "H01"
+      ],
+      "variants": [
+        "{energy} kWh von {when} reichen für rund {count} Waschgänge à 0,5 kWh.",
+        "Bei 0,5 kWh pro Waschgang entsprächen {energy} kWh von {when} rund {count} Ladungen."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Waschgang à 0,5 kWh.",
+        "Bei 0,5 kWh pro Waschgang entsprächen {energy} kWh von {when} rund {count} Ladung."
+      ]
+    },
+    {
+      "id": "dishwasher",
+      "family": "household",
+      "type": "uses",
+      "kwh_per_unit": 0.8,
+      "min_kwh": 0.8,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.8 kWh pro Einheit",
+      "legacy_ids": [],
+      "variants": [
+        "Mit {energy} kWh von {when} wären rund {count} Spülgänge à 0,8 kWh möglich.",
+        "Ein Geschirrspüler käme mit {energy} kWh von {when} auf rund {count} Eco-Gänge à 0,8 kWh."
+      ],
+      "singular_variants": [
+        "Mit {energy} kWh von {when} wäre rund {count} Spülgang à 0,8 kWh möglich.",
+        "Ein Geschirrspüler käme mit {energy} kWh von {when} auf rund {count} Eco-Gang à 0,8 kWh."
+      ]
+    },
+    {
+      "id": "dryer",
+      "family": "household",
+      "type": "uses",
+      "kwh_per_unit": 2,
+      "min_kwh": 2,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 2 kWh pro Einheit",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when} reichen für rund {count} Tumblerladungen à 2 kWh.",
+        "Mit {energy} kWh von {when} liesse sich bei 2 kWh pro Gang rund {count} Mal Wäsche trocknen."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Tumblerladung à 2 kWh.",
+        "Mit {energy} kWh von {when} liesse sich bei 2 kWh pro Gang etwa einmal Wäsche trocknen."
+      ]
+    },
+    {
+      "id": "fridge",
+      "family": "household",
+      "type": "uses",
+      "kwh_per_unit": 0.6,
+      "min_kwh": 0.6,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.6 kWh pro Einheit",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when} reichen für rund {count} Kühlschranktage à 0,6 kWh.",
+        "Ein Kühlschrank mit 0,6 kWh Tagesbedarf käme mit {energy} kWh von {when} rund {count} Tage aus."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Kühlschranktag à 0,6 kWh.",
+        "Ein Kühlschrank mit 0,6 kWh Tagesbedarf käme mit {energy} kWh von {when} rund {count} Tag aus."
+      ]
+    },
+    {
+      "id": "fan",
+      "family": "household",
+      "type": "runtime",
+      "power_w": 40,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 40 W",
+      "legacy_ids": [
+        "N07"
+      ],
+      "variants": [
+        "Ein 40-W-Ventilator könnte mit {energy} kWh von {when} rund {duration} Wind machen.",
+        "{energy} kWh von {when} würden einen 40-W-Ventilator rund {duration} drehen lassen."
+      ]
+    },
+    {
+      "id": "electric_blanket",
+      "family": "household",
+      "type": "runtime",
+      "power_w": 60,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 60 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 60-W-Heizdecke könnte mit {energy} kWh von {when} rund {duration} wärmen.",
+        "Mit {energy} kWh von {when} wäre eine 60-W-Heizdecke rund {duration} im Einsatz."
+      ]
+    },
+    {
+      "id": "espresso",
+      "family": "food",
+      "type": "uses",
+      "kwh_per_unit": 0.015,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.015 kWh pro Einheit",
+      "legacy_ids": [
+        "K01"
+      ],
+      "variants": [
+        "Mit {energy} kWh von {when} liessen sich rund {count} Espressi à 15 Wh zubereiten.",
+        "{energy} kWh von {when}: rund {count} Espressi bei 15 Wh pro Tasse."
+      ],
+      "singular_variants": [
+        "Mit {energy} kWh von {when} liesse sich rund {count} Espresso à 15 Wh zubereiten.",
+        "{energy} kWh von {when}: rund {count} Espresso bei 15 Wh pro Tasse."
+      ]
+    },
+    {
+      "id": "kettle",
+      "family": "food",
+      "type": "uses",
+      "kwh_per_unit": 0.1,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativ: 0,1 kWh/L, Wasser von etwa 20 °C bis zum Siedepunkt, mit geringen Verlusten.",
+      "legacy_ids": [],
+      "variants": [
+        "Mit {energy} kWh von {when} liessen sich rund {count} Liter Wasser aufkochen (0,1 kWh/L).",
+        "{energy} kWh von {when} reichen zum Aufkochen von rund {count} Litern Wasser (0,1 kWh/L)."
+      ],
+      "singular_variants": [
+        "Mit {energy} kWh von {when} liesse sich rund {count} Liter Wasser aufkochen (0,1 kWh/L).",
+        "{energy} kWh von {when} reichen zum Aufkochen von rund {count} Liter Wasser (0,1 kWh/L)."
+      ]
+    },
+    {
+      "id": "toast",
+      "family": "food",
+      "type": "uses",
+      "kwh_per_unit": 0.04,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.04 kWh pro Einheit",
+      "legacy_ids": [
+        "N03"
+      ],
+      "variants": [
+        "Ein Toaster könnte mit {energy} kWh von {when} rund {count} Scheiben rösten (40 Wh pro Scheibe).",
+        "{energy} kWh von {when}: rund {count} geröstete Toastscheiben bei 40 Wh pro Stück."
+      ],
+      "singular_variants": [
+        "Ein Toaster könnte mit {energy} kWh von {when} rund {count} Scheibe rösten (40 Wh pro Scheibe).",
+        "{energy} kWh von {when}: rund {count} geröstete Toastscheibe bei 40 Wh pro Stück."
+      ]
+    },
+    {
+      "id": "raclette",
+      "family": "food",
+      "type": "uses",
+      "kwh_per_unit": 0.3,
+      "min_kwh": 0.3,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.3 kWh pro Einheit",
+      "legacy_ids": [
+        "K08"
+      ],
+      "variants": [
+        "{energy} kWh von {when} reichen für rund {count} Racletteportionen à 0,3 kWh.",
+        "Bei 0,3 kWh pro Portion entsprächen {energy} kWh von {when} rund {count} Portionen Raclette."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Racletteportion à 0,3 kWh.",
+        "Bei 0,3 kWh pro Portion entsprächen {energy} kWh von {when} rund {count} Portion Raclette."
+      ]
+    },
+    {
+      "id": "soup",
+      "family": "food",
+      "type": "uses",
+      "kwh_per_unit": 0.1,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.1 kWh pro Einheit",
+      "legacy_ids": [
+        "N04"
+      ],
+      "variants": [
+        "Mit {energy} kWh von {when} liessen sich rund {count} Suppenportionen à 0,1 kWh aufwärmen.",
+        "{energy} kWh von {when}: genug zum Aufwärmen von rund {count} Suppenportionen à 0,1 kWh."
+      ],
+      "singular_variants": [
+        "Mit {energy} kWh von {when} liesse sich rund {count} Suppenportion à 0,1 kWh aufwärmen.",
+        "{energy} kWh von {when}: genug zum Aufwärmen von rund {count} Suppenportion à 0,1 kWh."
+      ]
+    },
+    {
+      "id": "oven_pizza",
+      "family": "food",
+      "type": "uses",
+      "kwh_per_unit": 1,
+      "min_kwh": 1,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 1 kWh pro Einheit",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when} reichen für rund {count} Ofengänge mit Pizza à 1 kWh.",
+        "Bei 1 kWh je Ofengang wären mit {energy} kWh von {when} rund {count} Pizza-Backrunden möglich."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Ofengang mit Pizza à 1 kWh.",
+        "Bei 1 kWh je Ofengang wäre mit {energy} kWh von {when} rund {count} Pizza-Backrunde möglich."
+      ]
+    },
+    {
+      "id": "popcorn_machine",
+      "family": "food",
+      "type": "runtime",
+      "power_w": 1200,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 1200 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 1,2-kW-Popcornmaschine könnte mit {energy} kWh von {when} rund {duration} heizen.",
+        "Mit {energy} kWh von {when} hätte eine 1,2-kW-Popcornmaschine rund {duration} Heizzeit."
+      ]
+    },
+    {
+      "id": "mixer",
+      "family": "food",
+      "type": "runtime",
+      "power_w": 300,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 300 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 300-W-Mixer könnte mit {energy} kWh von {when} rund {duration} mixen.",
+        "{energy} kWh von {when} würden einen 300-W-Mixer rund {duration} beschäftigen."
+      ]
+    },
+    {
+      "id": "waffle_iron",
+      "family": "food",
+      "type": "runtime",
+      "power_w": 1000,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 1000 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 1-kW-Waffeleisen könnte mit {energy} kWh von {when} rund {duration} heizen.",
+        "Waffelmarathon: {energy} kWh von {when} reichen für rund {duration} Heizzeit bei 1 kW."
+      ]
+    },
+    {
+      "id": "ice_cubes",
+      "family": "food",
+      "type": "uses",
+      "kwh_per_unit": 0.005,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativ: 5 Wh elektrische Energie pro kleinem Eiswürfel, inklusive Geräteverlusten.",
+      "legacy_ids": [
+        "K03"
+      ],
+      "variants": [
+        "{energy} kWh von {when} reichen bei 5 Wh pro Würfel für rund {count} Eiswürfel.",
+        "Eine Eismaschine könnte mit {energy} kWh von {when} rund {count} Würfel à 5 Wh herstellen."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen bei 5 Wh pro Würfel für rund {count} Eiswürfel.",
+        "Eine Eismaschine könnte mit {energy} kWh von {when} rund {count} Würfel à 5 Wh herstellen."
+      ]
+    },
+    {
+      "id": "phone_charge",
+      "family": "digital",
+      "type": "uses",
+      "kwh_per_unit": 0.017,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.017 kWh pro Einheit",
+      "legacy_ids": [
+        "D01"
+      ],
+      "variants": [
+        "{energy} kWh von {when} reichen für rund {count} Smartphone-Ladungen à 17 Wh.",
+        "Ein Smartphone könnte mit {energy} kWh von {when} rund {count} Mal à 17 Wh geladen werden."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Smartphone-Ladung à 17 Wh.",
+        "Ein Smartphone könnte mit {energy} kWh von {when} etwa einmal geladen werden (17 Wh pro Ladung)."
+      ]
+    },
+    {
+      "id": "tablet_charge",
+      "family": "digital",
+      "type": "uses",
+      "kwh_per_unit": 0.04,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.04 kWh pro Einheit",
+      "legacy_ids": [],
+      "variants": [
+        "Mit {energy} kWh von {when} liesse sich ein Tablet rund {count} Mal à 40 Wh laden.",
+        "{energy} kWh von {when}: rund {count} Tablet-Ladungen bei 40 Wh pro Ladung."
+      ],
+      "singular_variants": [
+        "Mit {energy} kWh von {when} liesse sich ein Tablet etwa einmal laden (40 Wh pro Ladung).",
+        "{energy} kWh von {when}: rund {count} Tablet-Ladung bei 40 Wh pro Ladung."
+      ]
+    },
+    {
+      "id": "laptop",
+      "family": "digital",
+      "type": "runtime",
+      "power_w": 50,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 50 W",
+      "legacy_ids": [
+        "N02"
+      ],
+      "variants": [
+        "Ein 50-W-Laptop könnte mit {energy} kWh von {when} rund {duration} laufen.",
+        "{energy} kWh von {when} reichen für rund {duration} Betrieb eines 50-W-Laptops."
+      ]
+    },
+    {
+      "id": "wifi_router",
+      "family": "digital",
+      "type": "runtime",
+      "power_w": 10,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 10 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 10-W-WLAN-Router könnte mit {energy} kWh von {when} rund {duration} funken.",
+        "{energy} kWh von {when} würden einen 10-W-Router rund {duration} online halten."
+      ]
+    },
+    {
+      "id": "gaming_pc",
+      "family": "digital",
+      "type": "runtime",
+      "power_w": 400,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 400 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein Gaming-PC mit 400 W könnte mit {energy} kWh von {when} rund {duration} laufen.",
+        "{energy} kWh von {when} reichen für rund {duration} Gaming bei 400 W."
+      ]
+    },
+    {
+      "id": "small_computer",
+      "family": "digital",
+      "type": "runtime",
+      "power_w": 5,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 5 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 5-W-Mini-PC könnte mit {energy} kWh von {when} rund {duration} rechnen.",
+        "Mit {energy} kWh von {when} hätte ein 5-W-Kleincomputer rund {duration} Rechenzeit."
+      ]
+    },
+    {
+      "id": "ereader_charge",
+      "family": "digital",
+      "type": "uses",
+      "kwh_per_unit": 0.01,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.01 kWh pro Einheit",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when} reichen für rund {count} E-Reader-Ladungen à 10 Wh.",
+        "Ein E-Reader liesse sich mit {energy} kWh von {when} rund {count} Mal à 10 Wh laden."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} E-Reader-Ladung à 10 Wh.",
+        "Ein E-Reader liesse sich mit {energy} kWh von {when} etwa einmal laden (10 Wh pro Ladung)."
+      ]
+    },
+    {
+      "id": "powerbank_charge",
+      "family": "digital",
+      "type": "uses",
+      "kwh_per_unit": 0.05,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.05 kWh pro Einheit",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when} reichen für rund {count} Powerbank-Ladungen à 50 Wh.",
+        "Mit {energy} kWh von {when} liessen sich rund {count} Powerbanks mit je 50 Wh laden."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} Powerbank-Ladung à 50 Wh.",
+        "Mit {energy} kWh von {when} liesse sich rund {count} Powerbank mit 50 Wh laden."
+      ]
+    },
+    {
+      "id": "pc_workstation",
+      "family": "digital",
+      "type": "runtime",
+      "power_w": 100,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 100 W",
+      "legacy_ids": [
+        "N11"
+      ],
+      "variants": [
+        "Ein 100-W-Büro-PC könnte mit {energy} kWh von {when} rund {duration} arbeiten.",
+        "Mit {energy} kWh von {when} könnte ein 100-W-PC rund {duration} eingeschaltet bleiben."
+      ]
+    },
+    {
+      "id": "radio",
+      "family": "leisure",
+      "type": "runtime",
+      "power_w": 10,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 10 W",
+      "legacy_ids": [
+        "N12"
+      ],
+      "variants": [
+        "Ein 10-W-Radio könnte mit {energy} kWh von {when} rund {duration} spielen.",
+        "{energy} kWh von {when} reichen für rund {duration} Radiobetrieb bei 10 W."
+      ]
+    },
+    {
+      "id": "disco_ball",
+      "family": "curious",
+      "type": "runtime",
+      "power_w": 4,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 4 W",
+      "legacy_ids": [
+        "U01"
+      ],
+      "variants": [
+        "Ein 4-W-Discokugelmotor könnte mit {energy} kWh von {when} rund {duration} rotieren.",
+        "{energy} kWh von {when}: eine Discokugel könnte mit 4 W rund {duration} kreisen."
+      ]
+    },
+    {
+      "id": "lava_lamp",
+      "family": "curious",
+      "type": "runtime",
+      "power_w": 25,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 25 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 25-W-Lavalampe könnte mit {energy} kWh von {when} rund {duration} leuchten.",
+        "Mit {energy} kWh von {when} könnte eine 25-W-Lavalampe rund {duration} blubbern."
+      ]
+    },
+    {
+      "id": "pinball",
+      "family": "leisure",
+      "type": "runtime",
+      "power_w": 150,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 150 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 150-W-Flipper könnte mit {energy} kWh von {when} rund {duration} laufen.",
+        "{energy} kWh von {when}: rund {duration} Flipperbetrieb bei 150 W."
+      ]
+    },
+    {
+      "id": "arcade",
+      "family": "leisure",
+      "type": "runtime",
+      "power_w": 250,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 250 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 250-W-Arcade-Automat könnte mit {energy} kWh von {when} rund {duration} laufen.",
+        "Mit {energy} kWh von {when} hätte ein 250-W-Spielautomat rund {duration} Betriebszeit."
+      ]
+    },
+    {
+      "id": "projector",
+      "family": "leisure",
+      "type": "runtime",
+      "power_w": 250,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 250 W",
+      "legacy_ids": [
+        "N13"
+      ],
+      "variants": [
+        "Ein 250-W-Beamer könnte mit {energy} kWh von {when} rund {duration} Filme zeigen.",
+        "{energy} kWh von {when} reichen für rund {duration} Kinobetrieb mit einem 250-W-Beamer."
+      ]
+    },
+    {
+      "id": "model_railway",
+      "family": "leisure",
+      "type": "runtime",
+      "power_w": 20,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 20 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 20-W-Modelleisenbahn könnte mit {energy} kWh von {when} rund {duration} im Kreis fahren.",
+        "Mit {energy} kWh von {when} könnte eine Modelleisenbahn bei 20 W rund {duration} fahren."
+      ]
+    },
+    {
+      "id": "game_table",
+      "family": "leisure",
+      "type": "runtime",
+      "power_w": 10,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 10 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 10-W-Lampe könnte mit {energy} kWh von {when} rund {duration} einen Spieltisch beleuchten.",
+        "{energy} kWh von {when}: rund {duration} Licht am Spieltisch mit einer 10-W-Lampe."
+      ]
+    },
+    {
+      "id": "console_tv",
+      "family": "leisure",
+      "type": "runtime",
+      "power_w": 250,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 250 W",
+      "legacy_ids": [],
+      "variants": [
+        "TV und Spielkonsole könnten mit {energy} kWh von {when} bei 250 W rund {duration} laufen.",
+        "Mit {energy} kWh von {when} wären rund {duration} Konsolenspiel bei 250 W möglich."
+      ]
+    },
+    {
+      "id": "electric_piano",
+      "family": "leisure",
+      "type": "runtime",
+      "power_w": 20,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 20 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 20-W-E-Piano könnte mit {energy} kWh von {when} rund {duration} eingeschaltet bleiben.",
+        "{energy} kWh von {when} reichen für rund {duration} am 20-W-E-Piano."
+      ]
+    },
+    {
+      "id": "3d_printer",
+      "family": "craft",
+      "type": "runtime",
+      "power_w": 120,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 120 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 120-W-3D-Drucker könnte mit {energy} kWh von {when} rund {duration} drucken.",
+        "Mit {energy} kWh von {when} hätte ein 120-W-3D-Drucker rund {duration} Betriebszeit."
+      ]
+    },
+    {
+      "id": "school_bell",
+      "family": "curious",
+      "type": "runtime",
+      "power_w": 40,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 40 W",
+      "legacy_ids": [
+        "U02"
+      ],
+      "variants": [
+        "Eine 40-W-Schulglocke könnte mit {energy} kWh von {when} rund {duration} läuten.",
+        "{energy} kWh von {when}: rund {duration} Dauerläuten einer 40-W-Schulglocke."
+      ]
+    },
+    {
+      "id": "aquarium_pump",
+      "family": "curious",
+      "type": "runtime",
+      "power_w": 5,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 5 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 5-W-Aquarienpumpe könnte mit {energy} kWh von {when} rund {duration} blubbern.",
+        "Mit {energy} kWh von {when} liefe eine 5-W-Aquarienpumpe rund {duration}."
+      ]
+    },
+    {
+      "id": "fairy_lights",
+      "family": "lighting",
+      "type": "runtime",
+      "power_w": 5,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 5 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 5-W-Lichterkette könnte mit {energy} kWh von {when} rund {duration} leuchten.",
+        "{energy} kWh von {when} würden eine 5-W-Lichterkette rund {duration} erhellen."
+      ]
+    },
+    {
+      "id": "led",
+      "family": "lighting",
+      "type": "runtime",
+      "power_w": 10,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 10 W",
+      "legacy_ids": [
+        "N01"
+      ],
+      "variants": [
+        "Eine 10-W-LED könnte mit {energy} kWh von {when} rund {duration} leuchten.",
+        "Mit {energy} kWh von {when} hätte eine 10-W-LED rund {duration} Licht geliefert."
+      ]
+    },
+    {
+      "id": "museum_spot",
+      "family": "lighting",
+      "type": "runtime",
+      "power_w": 200,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 200 W",
+      "legacy_ids": [
+        "N09"
+      ],
+      "variants": [
+        "Ein 200-W-Scheinwerfer könnte mit {energy} kWh von {when} rund {duration} ein Kunstwerk beleuchten.",
+        "{energy} kWh von {when}: rund {duration} Licht für ein Kunstwerk bei 200 W."
+      ]
+    },
+    {
+      "id": "microscope",
+      "family": "science",
+      "type": "runtime",
+      "power_w": 30,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 30 W",
+      "legacy_ids": [
+        "N08"
+      ],
+      "variants": [
+        "Ein Mikroskop mit 30 W Strombedarf könnte mit {energy} kWh von {when} rund {duration} laufen.",
+        "{energy} kWh von {when}: rund {duration} Betrieb eines 30-W-Mikroskops."
+      ]
+    },
+    {
+      "id": "ebike",
+      "family": "mobility",
+      "type": "distance",
+      "kwh_per_km": 0.007,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativer Verbrauch: 0.007 kWh/km",
+      "legacy_ids": [
+        "V01"
+      ],
+      "variants": [
+        "Mit {energy} kWh von {when} käme ein E-Bike rund {km} km weit (7 Wh/km).",
+        "{energy} kWh von {when} entsprechen rund {km} E-Bike-Kilometern bei 7 Wh/km."
+      ]
+    },
+    {
+      "id": "electric_car",
+      "family": "mobility",
+      "type": "distance",
+      "kwh_per_km": 0.15,
+      "min_kwh": 0.15,
+      "max_kwh": null,
+      "basis": "Illustrativer Verbrauch: 0.15 kWh/km",
+      "legacy_ids": [
+        "V03"
+      ],
+      "variants": [
+        "Ein sparsames E-Auto käme mit {energy} kWh von {when} rund {km} km weit (15 kWh/100 km).",
+        "{energy} kWh von {when} reichen bei 15 kWh/100 km für rund {km} km im E-Auto."
+      ]
+    },
+    {
+      "id": "escooter",
+      "family": "mobility",
+      "type": "distance",
+      "kwh_per_km": 0.015,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativer Verbrauch: 0.015 kWh/km",
+      "legacy_ids": [],
+      "variants": [
+        "Ein E-Trottinett käme mit {energy} kWh von {when} rund {km} km weit (15 Wh/km).",
+        "{energy} kWh von {when}: rund {km} km mit einem E-Trottinett bei 15 Wh/km."
+      ]
+    },
+    {
+      "id": "cargo_bike",
+      "family": "mobility",
+      "type": "distance",
+      "kwh_per_km": 0.012,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativer Verbrauch: 0.012 kWh/km",
+      "legacy_ids": [],
+      "variants": [
+        "Ein E-Lastenvelo käme mit {energy} kWh von {when} rund {km} km weit (12 Wh/km).",
+        "Mit {energy} kWh von {when} wären rund {km} km im E-Lastenvelo bei 12 Wh/km möglich."
+      ]
+    },
+    {
+      "id": "electric_bus",
+      "family": "mobility",
+      "type": "distance",
+      "kwh_per_km": 1.2,
+      "min_kwh": 1.2,
+      "max_kwh": null,
+      "basis": "Illustrativer Verbrauch: 1.2 kWh/km",
+      "legacy_ids": [],
+      "variants": [
+        "Ein Elektrobus käme bei 1,2 kWh/km mit {energy} kWh von {when} rund {km} km weit.",
+        "{energy} kWh von {when}: rund {km} km Elektrobus bei 1,2 kWh/km."
+      ]
+    },
+    {
+      "id": "tram",
+      "family": "mobility",
+      "type": "distance",
+      "kwh_per_km": 3.5,
+      "min_kwh": 7,
+      "max_kwh": null,
+      "basis": "Illustrativer Verbrauch: 3.5 kWh/km",
+      "legacy_ids": [
+        "V09"
+      ],
+      "variants": [
+        "Ein Tram käme bei 3,5 kWh/km mit {energy} kWh von {when} rund {km} km weit.",
+        "{energy} kWh von {when} entsprächen rund {km} Tram-Kilometern bei 3,5 kWh/km."
+      ]
+    },
+    {
+      "id": "lift_trip",
+      "family": "mobility",
+      "type": "uses",
+      "kwh_per_unit": 0.03,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrativer Energiebedarf: 0.03 kWh pro Einheit",
+      "legacy_ids": [
+        "V07"
+      ],
+      "variants": [
+        "{energy} kWh von {when} reichen für rund {count} kurze Liftfahrten à 30 Wh.",
+        "Bei 30 Wh pro kurzer Liftfahrt entsprächen {energy} kWh von {when} rund {count} Fahrten."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} reichen für rund {count} kurze Liftfahrt à 30 Wh.",
+        "Bei 30 Wh pro kurzer Liftfahrt entsprächen {energy} kWh von {when} rund {count} Fahrt."
+      ]
+    },
+    {
+      "id": "cycling_generator",
+      "family": "science",
+      "type": "runtime",
+      "power_w": 125,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Hypothetische elektrische Ausgangsleistung am Pedalgenerator: konstant 125 W; keine Aussage über die menschliche Stoffwechselenergie.",
+      "legacy_ids": [
+        "M01"
+      ],
+      "variants": [
+        "Bei 125 W Generatorleistung müsste man für {energy} kWh von {when} rund {duration} Velo fahren.",
+        "{energy} kWh von {when}: rund {duration} Velofahren an einem 125-W-Generator."
+      ]
+    },
+    {
+      "id": "water_warm",
+      "family": "science",
+      "type": "quantity",
+      "kwh_per_unit": 0.023255555555555557,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Physik: Wasser 1 kg/L, Wärmekapazität 4,186 kJ/(kg K), ΔT 20 K; keine Verluste.",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when} könnten ohne Verluste rund {quantity} Liter Wasser von 20 auf 40 °C erwärmen.",
+        "Mit {energy} kWh von {when} liessen sich ideal rund {quantity} Liter Wasser um 20 °C erwärmen."
+      ]
+    },
+    {
+      "id": "ice_melt",
+      "family": "science",
+      "type": "quantity",
+      "kwh_per_unit": 0.09277777777777778,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Physik: Schmelzenthalpie ca. 334 kJ/kg, Eis und Wasser bei 0 °C; keine Verluste.",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when} könnten theoretisch rund {quantity} kg Eis bei 0 °C schmelzen.",
+        "Mit {energy} kWh von {when} liessen sich rund {quantity} kg Eis bei 0 °C schmelzen (ideal)."
+      ]
+    },
+    {
+      "id": "lift_tonne",
+      "family": "science",
+      "type": "uses",
+      "kwh_per_unit": 0.2725,
+      "min_kwh": 0.3,
+      "max_kwh": null,
+      "basis": "Physik: m*g*h, 1’000 kg, 9,81 m/s², 100 m, 100 % Wirkungsgrad.",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when}: Eine Tonne Last könnte theoretisch rund {count} Mal 100 m hochgehoben werden.",
+        "Ohne Verluste reichen {energy} kWh von {when} für rund {count} Hübe einer Tonne um 100 m."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when}: Eine Tonne Last könnte theoretisch etwa einmal 100 m hochgehoben werden.",
+        "Ohne Verluste reichen {energy} kWh von {when} für rund {count} Hub einer Tonne um 100 m."
+      ]
+    },
+    {
+      "id": "pump_water",
+      "family": "science",
+      "type": "quantity",
+      "kwh_per_unit": 0.340625,
+      "min_kwh": 0.5,
+      "max_kwh": null,
+      "basis": "Physik: 1’000 kg/m³, Hubhöhe 100 m, Wirkungsgrad 80 %; idealisierte Pumpe.",
+      "legacy_ids": [
+        "N14"
+      ],
+      "variants": [
+        "{energy} kWh von {when} könnten rund {quantity} m³ Wasser 100 m hochpumpen (80 % Wirkungsgrad).",
+        "Bei 80 % Wirkungsgrad reichen {energy} kWh von {when} für rund {quantity} m³ Wasser 100 m bergauf."
+      ]
+    },
+    {
+      "id": "goesgen",
+      "family": "large_scale",
+      "type": "runtime",
+      "power_w": 1010000000,
+      "min_kwh": 10,
+      "max_kwh": null,
+      "basis": "Elektrische Nettonennleistung 1’010 MW; kein aktueller Betriebswert.",
+      "legacy_ids": [
+        "X01"
+      ],
+      "variants": [
+        "Bei Nennleistung würde das AKW Gösgen {energy} kWh von {when} in rund {duration} erzeugen.",
+        "{energy} kWh von {when}: Das AKW Gösgen erzeugt diese Menge bei Nennleistung in rund {duration}."
+      ],
+      "source_url": "https://www.kkg.ch/de/technik/technische-hauptdaten.html"
+    },
+    {
+      "id": "lhc",
+      "family": "large_scale",
+      "type": "runtime",
+      "power_w": 68493150.6849315,
+      "min_kwh": 10,
+      "max_kwh": null,
+      "basis": "CERN nennt rund 600 GWh/Jahr für LHC, Experimente und allgemeine Dienste; 600 GWh/8’760 h ≈ 68,5 MW. Kein Live-Wert.",
+      "legacy_ids": [
+        "X11"
+      ],
+      "variants": [
+        "{energy} kWh von {when}: So viel Strom benötigt der LHC samt Experimenten im Jahresmittel in rund {duration}.",
+        "Im Jahresmittel braucht der LHC samt Experimenten für {energy} kWh von {when} rund {duration}."
+      ],
+      "source_url": "https://home.cern/science/accelerators/large-hadron-collider/"
+    },
+    {
+      "id": "wind_turbine",
+      "family": "large_scale",
+      "type": "runtime",
+      "power_w": 3000000,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Hypothetische konstante elektrische Leistung von 3 MW; keine reale Windprognose.",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 3-MW-Windrad würde {energy} kWh von {when} bei voller Leistung in rund {duration} erzeugen.",
+        "{energy} kWh von {when} entsprechen rund {duration} Volllast eines 3-MW-Windrads."
+      ]
+    },
+    {
+      "id": "old_lightbulb",
+      "family": "lighting",
+      "type": "runtime",
+      "power_w": 100,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 100 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine alte 100-W-Glühbirne könnte mit {energy} kWh von {when} rund {duration} leuchten.",
+        "{energy} kWh von {when} reichen für rund {duration} Licht einer 100-W-Glühbirne."
+      ]
+    },
+    {
+      "id": "streetlamp",
+      "family": "infrastructure",
+      "type": "runtime",
+      "power_w": 60,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 60 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 60-W-LED-Strassenlampe könnte mit {energy} kWh von {when} rund {duration} leuchten.",
+        "{energy} kWh von {when} würden eine 60-W-Strassenlampe rund {duration} betreiben."
+      ]
+    },
+    {
+      "id": "traffic_signal",
+      "family": "infrastructure",
+      "type": "runtime",
+      "power_w": 20,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 20 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 20-W-Ampelsignal könnte mit {energy} kWh von {when} rund {duration} leuchten.",
+        "Mit {energy} kWh von {when} liesse sich ein 20-W-Ampelsignal rund {duration} betreiben."
+      ]
+    },
+    {
+      "id": "electric_toothbrush",
+      "family": "curious",
+      "type": "runtime",
+      "power_w": 2,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 2 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine elektrische Zahnbürste mit 2 W könnte mit {energy} kWh von {when} rund {duration} laufen.",
+        "{energy} kWh von {when}: rund {duration} Laufzeit einer 2-W-Zahnbürste."
+      ]
+    },
+    {
+      "id": "air_dancer",
+      "family": "curious",
+      "type": "runtime",
+      "power_w": 500,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 500 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 500-W-Gebläsefigur könnte mit {energy} kWh von {when} rund {duration} tanzen.",
+        "Mit {energy} kWh von {when} könnte eine 500-W-Gebläsefigur rund {duration} herumwedeln."
+      ]
+    },
+    {
+      "id": "snow_globe",
+      "family": "curious",
+      "type": "runtime",
+      "power_w": 5,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 5 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 5-W-Schneekugel mit Motor könnte mit {energy} kWh von {when} rund {duration} schneien.",
+        "{energy} kWh von {when}: rund {duration} künstlicher Schneefall in einer 5-W-Schneekugel."
+      ]
+    },
+    {
+      "id": "clock",
+      "family": "curious",
+      "type": "runtime",
+      "power_w": 5,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 5 W",
+      "legacy_ids": [],
+      "variants": [
+        "Eine elektrische Uhr mit 5 W könnte mit {energy} kWh von {when} rund {duration} laufen.",
+        "{energy} kWh von {when} reichen für rund {duration} Laufzeit einer 5-W-Uhr."
+      ]
+    },
+    {
+      "id": "electric_heater",
+      "family": "household",
+      "type": "runtime",
+      "power_w": 1000,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 1000 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 1-kW-Heizlüfter könnte mit {energy} kWh von {when} rund {duration} heizen.",
+        "{energy} kWh von {when}: rund {duration} Wärme aus einem 1-kW-Heizlüfter."
+      ]
+    },
+    {
+      "id": "elevator_motor",
+      "family": "infrastructure",
+      "type": "runtime",
+      "power_w": 5000,
+      "min_kwh": 2,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 5000 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein Liftmotor mit 5 kW könnte mit {energy} kWh von {when} rund {duration} arbeiten.",
+        "{energy} kWh von {when} reichen für rund {duration} Motorlaufzeit eines 5-kW-Lifts."
+      ]
+    },
+    {
+      "id": "robot_mower",
+      "family": "curious",
+      "type": "runtime",
+      "power_w": 50,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative konstante Leistungsaufnahme: 50 W",
+      "legacy_ids": [],
+      "variants": [
+        "Ein 50-W-Mähroboter könnte mit {energy} kWh von {when} rund {duration} mähen.",
+        "{energy} kWh von {when} würden einen 50-W-Mähroboter rund {duration} beschäftigen."
+      ]
+    },
+    {
+      "id": "chocolate_energy",
+      "family": "science",
+      "type": "quantity",
+      "kwh_per_unit": 6.392222222222222,
+      "min_kwh": 2,
+      "max_kwh": null,
+      "basis": "Illustrative food energy content of chocolate, 550 kcal/100 g. Pure energy equivalence, not conversion to electricity.",
+      "legacy_ids": [],
+      "variants": [
+        "Rein energetisch entsprechen {energy} kWh von {when} rund {quantity} kg Schokolade (550 kcal/100 g).",
+        "{energy} kWh von {when} entsprechen dem Energiegehalt von rund {quantity} kg Schokolade à 550 kcal/100 g."
+      ]
+    },
+    {
+      "id": "sprint_car",
+      "family": "science",
+      "type": "uses",
+      "kwh_per_unit": 0.02679183813443073,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Kinetic energy of a 1000 kg mass accelerated from rest to 50 km/h; ideal conversion, no losses.",
+      "legacy_ids": [],
+      "variants": [
+        "Ohne Verluste könnte man mit {energy} kWh von {when} einen 1-t-Wagen rund {count} Mal auf 50 km/h beschleunigen.",
+        "{energy} kWh von {when}: theoretisch {count} Starts von 0 auf 50 km/h für ein 1-t-Auto."
+      ],
+      "singular_variants": [
+        "Ohne Verluste könnte man mit {energy} kWh von {when} einen 1-t-Wagen etwa einmal auf 50 km/h beschleunigen.",
+        "{energy} kWh von {when}: theoretisch {count} Start von 0 auf 50 km/h für ein 1-t-Auto."
+      ]
+    },
+    {
+      "id": "lift_person_alps",
+      "family": "science",
+      "type": "uses",
+      "kwh_per_unit": 0.6104,
+      "min_kwh": 1,
+      "max_kwh": null,
+      "basis": "Ideal potential energy for lifting an 80 kg mass vertically by 2800 m; no losses, no geographical claim.",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when} könnten eine 80-kg-Person theoretisch rund {count} Mal 2’800 Höhenmeter anheben.",
+        "Ohne Verluste reichen {energy} kWh von {when} für rund {count} Aufstiege à 2’800 Höhenmeter einer 80-kg-Person."
+      ],
+      "singular_variants": [
+        "{energy} kWh von {when} könnten eine 80-kg-Person theoretisch etwa einmal 2’800 Höhenmeter anheben.",
+        "Ohne Verluste reichen {energy} kWh von {when} für rund {count} Aufstieg à 2’800 Höhenmeter einer 80-kg-Person."
+      ]
+    },
+    {
+      "id": "drone",
+      "family": "curious",
+      "type": "runtime",
+      "power_w": 100,
+      "min_kwh": 0.1,
+      "max_kwh": null,
+      "basis": "Illustrative hypothetical constant electrical power demand of a small drone, 100 W.",
+      "legacy_ids": [],
+      "variants": [
+        "Eine 100-W-Drohne könnte mit {energy} kWh von {when} rund {duration} in der Luft bleiben.",
+        "{energy} kWh von {when}: rund {duration} Drohnenflug bei konstant 100 W."
+      ]
+    },
+    {
+      "id": "battery_equivalent",
+      "family": "local",
+      "type": "quantity",
+      "kwh_per_unit": 15.795,
+      "min_kwh": 3,
+      "max_kwh": null,
+      "basis": "Reference: nominal Fronius Reserva storage capacity approximately 15.8 kWh; energy equivalence only; not actual charge cycles or usable capacity.",
+      "legacy_ids": [],
+      "variants": [
+        "{energy} kWh von {when} entsprechen rund {quantity} Mal dem Nenninhalt der 15,8-kWh-Batterie.",
+        "Rein energetisch: {energy} kWh von {when} entsprechen rund {quantity} Batteriefüllungen à 15,8 kWh."
+      ]
+    }
+  ],
+  "retired_legacy_ids": [
+    "D02",
+    "M03",
+    "N10",
+    "X03",
+    "CMB07"
+  ]
+}

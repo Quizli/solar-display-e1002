@@ -1,0 +1,240 @@
+{
+  "version": 2,
+  "locale": "de-CH",
+  "stories": [
+    {
+      "id": "HIST_YESTERDAY",
+      "condition": "Both yesterday and previous calendar day qualified. Similar if |pct| <5%; if baseline <0.1 kWh use absolute branch.",
+      "semantic": "day_vs_previous",
+      "variants": {
+        "higher": [
+          "Gestern kamen {energy} kWh vom Dach. Das waren {delta} kWh mehr als am Vortag.",
+          "{energy} kWh gestern, {baseline} kWh am Vortag. Ein Plus von {pct} %."
+        ],
+        "lower": [
+          "Gestern kamen {energy} kWh vom Dach. Das waren {delta} kWh weniger als am Vortag.",
+          "{energy} kWh gestern, {baseline} kWh am Vortag. Ein Minus von {pct} %."
+        ],
+        "similar": [
+          "Gestern und der Vortag lagen fast gleichauf: {energy} zu {baseline} kWh.",
+          "Zwei ähnliche Solartage: {baseline} kWh am Vortag, {energy} kWh gestern."
+        ],
+        "absolute": [
+          "Gestern kamen {energy} kWh vom Dach. Am Vortag waren es {baseline} kWh."
+        ]
+      }
+    },
+    {
+      "id": "HIST_AVERAGE",
+      "condition": "Latest qualified day vs mean of previous 2–7 qualified days, skipping missing days. Day label is Gestern only for actual yesterday, otherwise Am <date>. Similar if |pct|<5%; positive baseline >=0.1.",
+      "semantic": "day_vs_average",
+      "variants": {
+        "higher": [
+          "{day_label} lag der Ertrag {pct} % über dem Schnitt der {n} vorherigen vollständigen Tage.",
+          "{day_label}: {energy} kWh. Der Schnitt der {n} vorherigen vollständigen Tage lag bei {baseline} kWh.",
+          "{day_label} kamen {delta} kWh mehr vom Dach als im Schnitt der {n} vorherigen vollständigen Tage."
+        ],
+        "lower": [
+          "{day_label} lag der Ertrag {pct} % unter dem Schnitt der {n} vorherigen vollständigen Tage.",
+          "{day_label}: {energy} kWh, gegenüber {baseline} kWh im Schnitt der {n} vorherigen vollständigen Tage.",
+          "{day_label} kamen {delta} kWh weniger vom Dach als im Schnitt der {n} vorherigen vollständigen Tage."
+        ],
+        "similar": [
+          "{day_label} lag der Ertrag nahe am Schnitt der {n} vorherigen vollständigen Tage: {energy} zu {baseline} kWh.",
+          "{day_label} war der Ertrag fast durchschnittlich: {energy} kWh gegenüber {baseline} kWh im Schnitt."
+        ]
+      }
+    },
+    {
+      "id": "HIST_RECENT_RANK",
+      "condition": "Exactly latest 7 qualified days; latest is reference; unique rank by displayed precision, rank 1/2/3/6/7 only, descending yields.",
+      "semantic": "recent_rank",
+      "variants": {
+        "high": [
+          "{day_label} erreichte der Ertrag mit {energy} kWh Rang {rank} der letzten 7 vollständig erfassten Tage.",
+          "{energy} kWh am {date}: Platz {rank} unter den 7 jüngsten vollständigen Tagen."
+        ],
+        "low": [
+          "{day_label} war der Ertrag mit {energy} kWh auf Rang {rank} von 7 vollständigen Tagen (stärkster zuerst).",
+          "Mit {energy} kWh erreichte der {date} Rang {rank} der letzten 7 vollständigen Tage."
+        ]
+      }
+    },
+    {
+      "id": "HIST_3DAY_TREND",
+      "condition": "Exactly latest 6 qualified days, latest three mean vs previous three mean. |pct| >=10%, |delta|>=2 kWh; positive baseline >=0.1.",
+      "semantic": "trend_3v3",
+      "variants": {
+        "higher": [
+          "Die jüngsten 3 vollständigen Tage brachten im Schnitt {pct} % mehr Solarstrom als die 3 davor.",
+          "Zuletzt waren es im Schnitt {energy} kWh pro Tag, gegenüber {baseline} kWh in den 3 vollständigen Tagen davor."
+        ],
+        "lower": [
+          "Die jüngsten 3 vollständigen Tage brachten im Schnitt {pct} % weniger Solarstrom als die 3 davor.",
+          "Zuletzt waren es im Schnitt {energy} kWh pro Tag, zuvor {baseline} kWh (je 3 vollständige Tage)."
+        ]
+      }
+    },
+    {
+      "id": "HIST_7DAY_TOTAL",
+      "condition": "Exactly latest 7 qualified days; never say calendar week unless consecutive.",
+      "semantic": "sum_7",
+      "variants": {
+        "default": [
+          "Die letzten 7 vollständig erfassten Tage brachten zusammen {energy} kWh Solarstrom.",
+          "{energy} kWh vom Dach in den letzten 7 vollständigen Tagen.",
+          "In den letzten 7 vollständig erfassten Tagen kamen im Schnitt {average} kWh pro Tag zusammen."
+        ]
+      }
+    },
+    {
+      "id": "HIST_30DAY_TOTAL",
+      "condition": "Exactly latest 30 qualified days; not a calendar month.",
+      "semantic": "sum_30",
+      "variants": {
+        "default": [
+          "Die letzten 30 vollständig erfassten Tage brachten zusammen {energy} kWh Solarstrom.",
+          "{energy} kWh in 30 vollständig erfassten Tagen. Im Schnitt waren das {average} kWh pro Tag."
+        ]
+      }
+    },
+    {
+      "id": "HIST_LAST_WEEK",
+      "condition": "Previous ISO calendar week; all seven calendar days qualified.",
+      "semantic": "calendar_week",
+      "variants": {
+        "default": [
+          "Letzte Kalenderwoche kamen {energy} kWh vom Dach. Das sind im Schnitt {average} kWh pro Tag.",
+          "Von Montag bis Sonntag der letzten Woche produzierte die Anlage {energy} kWh."
+        ]
+      }
+    },
+    {
+      "id": "HIST_LAST_MONTH",
+      "condition": "Previous calendar month; all calendar days qualified; include year in month label when not current year.",
+      "semantic": "calendar_month",
+      "variants": {
+        "default": [
+          "Im {month} kamen insgesamt {energy} kWh vom Dach.",
+          "{month}: {energy} kWh Solarstrom, im Schnitt {average} kWh pro Tag."
+        ]
+      }
+    },
+    {
+      "id": "HIST_MONTH_TO_DATE",
+      "condition": "Current month through yesterday; at least five elapsed days; every day qualified.",
+      "semantic": "month_to_date",
+      "variants": {
+        "default": [
+          "Vom 1. {month} bis gestern kamen {energy} kWh Solarstrom vom Dach.",
+          "{energy} kWh seit Monatsbeginn bis gestern. Der heutige Tag kommt noch dazu."
+        ]
+      }
+    },
+    {
+      "id": "HIST_RECENT_RANGE",
+      "condition": "Exactly latest 7 qualified days; max-min>=10 kWh.",
+      "semantic": "recent_range",
+      "variants": {
+        "default": [
+          "Die letzten 7 vollständig erfassten Tage lagen zwischen {low} und {high} kWh.",
+          "{delta} kWh lagen zwischen dem stärksten und schwächsten der letzten 7 vollständigen Tage."
+        ]
+      }
+    },
+    {
+      "id": "HIST_RECENT_BEST",
+      "condition": "Unique best among latest 7 qualified days, at displayed precision.",
+      "semantic": "recent_rank",
+      "variants": {
+        "default": [
+          "Der stärkste der letzten 7 vollständigen Tage war der {date} mit {energy} kWh.",
+          "{energy} kWh am {date}: Bestwert unter den letzten 7 vollständig erfassten Tagen."
+        ]
+      }
+    },
+    {
+      "id": "HIST_THRESHOLD_COUNT",
+      "condition": "Exactly latest 7 qualified days; choose largest threshold among [100,50,25,10,5] with 2–6 days strictly above; 7 allowed for 100 or 50.",
+      "semantic": "threshold_count",
+      "variants": {
+        "default": [
+          "An {count} der letzten 7 vollständigen Tage kamen mehr als {threshold} kWh vom Dach.",
+          "{count} von 7 vollständig erfassten Tagen lagen über der {threshold}-kWh-Marke."
+        ]
+      },
+      "thresholds_kwh": [
+        100,
+        50,
+        25,
+        10,
+        5
+      ]
+    },
+    {
+      "id": "HIST_RECORD_AGE",
+      "condition": "At least two qualified days. Unique all-time qualified record at displayed precision, record date at least 3 local days old; age measured in calendar days.",
+      "semantic": "record",
+      "variants": {
+        "default": [
+          "Der Tagesrekord seit Messbeginn steht bei {energy} kWh. Er stammt vom {date}.",
+          "Seit {days} Tagen hält der Bestwert von {energy} kWh vom {date}.",
+          "Die Messreihe erreichte ihren höchsten Tagesertrag am {date}: {energy} kWh."
+        ]
+      }
+    },
+    {
+      "id": "HIST_STREAK",
+      "condition": "Contiguous qualified calendar days through yesterday, strictly >100 kWh, run length >=3.",
+      "semantic": "streak",
+      "variants": {
+        "default": [
+          "Bis gestern: {days} Tage in Folge mit mehr als 100 kWh Solarstrom.",
+          "An den letzten {days} Kalendertagen kamen jeweils mehr als 100 kWh vom Dach.",
+          "{days} Tage hintereinander lagen über der 100-kWh-Marke."
+        ]
+      }
+    },
+    {
+      "id": "HIST_STREAK_END",
+      "condition": "Yesterday qualified <=100 kWh; immediately preceding contiguous qualified >100 kWh run >=3. Missing day cannot prove end.",
+      "semantic": "streak_end",
+      "variants": {
+        "default": [
+          "Nach {days} Tagen in Folge über 100 kWh blieb der gestrige Ertrag darunter.",
+          "Die 100-kWh-Serie endete gestern nach {days} Tagen. Gestern waren es {energy} kWh."
+        ]
+      }
+    },
+    {
+      "id": "HIST_WEEKDAY",
+      "condition": "Yesterday and exact same weekday seven calendar days earlier both qualified. Similar if absolute pct<5%; use absolute when baseline <0.1.",
+      "semantic": "day_vs_weekday",
+      "variants": {
+        "higher": [
+          "Gestern kamen {energy} kWh vom Dach, {delta} kWh mehr als eine Woche zuvor."
+        ],
+        "lower": [
+          "Gestern waren es {energy} kWh, {delta} kWh weniger als am gleichen Wochentag der Vorwoche."
+        ],
+        "similar": [
+          "Gestern und eine Woche zuvor lagen fast gleichauf: {energy} zu {baseline} kWh."
+        ],
+        "absolute": [
+          "Gestern: {energy} kWh. Eine Woche zuvor: {baseline} kWh."
+        ]
+      }
+    },
+    {
+      "id": "HIST_LOW_YIELD",
+      "condition": "Exactly latest 7 qualified days; count yields <10 kWh, show count 2–7 only; no weather causation.",
+      "semantic": "low_yield",
+      "variants": {
+        "default": [
+          "An {count} der letzten 7 vollständigen Tage blieb der Solarertrag unter 10 kWh.",
+          "{count} der letzten 7 vollständig erfassten Tage lieferten weniger als 10 kWh."
+        ]
+      }
+    }
+  ]
+}

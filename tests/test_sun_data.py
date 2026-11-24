@@ -20,6 +20,19 @@ def payload(duration=27360, weather_code=0):
 
 
 class SunClientTest(unittest.TestCase):
+    def test_daylight_survives_daily_cache_rollover(self):
+        from dataclasses import replace
+        first = parse_response(payload(),NOW,NOW.date())
+        later = NOW+timedelta(days=1)
+        second = replace(first,local_date=later.date(), sunrise=first.sunrise+timedelta(days=1),
+                         sunset=first.sunset+timedelta(days=1),fetched_at=later)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/"sun.json"
+            get_sun_data(47,8,path,NOW,fetcher=lambda *a,**kw:first)
+            get_sun_data(47,8,path,later,fetcher=lambda *a,**kw:second)
+            cached = get_sun_data(47,8,path,later)
+            self.assertEqual(cached.data.previous_daylight_seconds, first.sunset.timestamp()-first.sunrise.timestamp())
+
     def test_valid_response_converts_seconds_and_local_times(self):
         result = parse_response(payload(), NOW, NOW.date())
         self.assertEqual(result.sunshine_hours, 7.6)

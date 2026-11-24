@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dashboard.live_view import build_live_view, build_story
-from dashboard.facts.catalog import FACTS
+from dashboard.facts.editorial import ENERGY
 from dashboard.facts import hour_key
 from solar_data.timezones import ZURICH
 from dashboard.live_view import validate_co2_factor
@@ -220,8 +220,8 @@ class DashboardTest(unittest.TestCase):
         status = first["story_status"]
         self.assertNotEqual(status["fact_id"], "TECH")
         self.assertEqual(status["energy_period"], "today")
-        self.assertEqual(status["selection_energy_kwh"], 1.1)
-        self.assertEqual(status["selection_bucket_start"], _utc_text(anchor_start))
+        self.assertEqual(status["selection_energy_kwh"], .2)
+        self.assertEqual(status["selection_bucket_start"], _utc_text(now.replace(minute=20)))
         self.assertTrue(status["selection_persisted"])
         self.assertEqual(status["selection_source"], "new")
         stored = self.db.get_fact_selection(hour_key(now.astimezone(ZURICH)))
@@ -270,29 +270,28 @@ class DashboardTest(unittest.TestCase):
 
         later = day + timedelta(hours=5, minutes=5)
         local_later = later.astimezone(ZURICH).replace(minute=0)
-        for fact in FACTS:
-            if fact.min_kwh <= 50 <= fact.max_kwh:
+        for fact in ENERGY.values():
+            if fact["min_kwh"] <= 50 <= (fact["max_kwh"] or float("inf")):
                 prior = local_later - timedelta(days=1)
                 self.db.store_fact_selection(
-                    f"used-{fact.fact_id}", prior, fact.fact_id, fact.family, 50)
+                    f"used-{fact['id']}", prior, fact["id"], fact["family"], 50)
                 self.db.connection.execute(
                     "UPDATE fact_history SET local_day = ? WHERE hour_key = ?",
-                    (local_later.date().isoformat(), f"used-{fact.fact_id}"))
+                    (local_later.date().isoformat(), f"used-{fact['id']}"))
         self.db.connection.commit()
         self.aggregate(later.replace(minute=5), 1, 1, 0, 0, 0, 1, energy=50)
         relaxed = build_story(self.db, later, 50, 1)
         self.assertNotEqual(relaxed.fact_id, "TECH")
         self.assertIn(relaxed.fact_id, {story.fact_id for story in stories} |
-                      {fact.fact_id for fact in FACTS if fact.min_kwh <= 50 <= fact.max_kwh})
+                      {fact["id"] for fact in ENERGY.values() if fact["min_kwh"] <= 50 <= (fact["max_kwh"] or float("inf"))})
 
     def test_preproduction_does_not_persist_catalogue_facts(self):
         for now in (datetime(2026, 7, 25, 3, 5, tzinfo=timezone.utc),
                     datetime(2026, 7, 25, 5, 5, tzinfo=timezone.utc)):
             with self.subTest(now=now):
                 story = build_story(self.db, now, 0, 0)
-                self.assertIn(story.family, {"status", "technical"})
-                self.assertEqual(self.db.fact_selections_for_local_day(
-                    now.astimezone(ZURICH).date()), [])
+                self.assertEqual(story.family, "morning")
+                self.assertTrue(all(r.fact_id not in ENERGY for r in self.db.fact_selections_for_local_day(now.astimezone(ZURICH).date())))
 
     def test_previous_day_catalogue_ids_are_deprioritized_but_not_excluded(self):
         now = datetime(2026, 7, 25, 10, 5, tzinfo=timezone.utc)
@@ -308,10 +307,10 @@ class DashboardTest(unittest.TestCase):
         self.assertNotEqual(selected.fact_id, "TECH")
 
         self.db.connection.execute("DELETE FROM fact_history")
-        for fact in FACTS:
-            if fact.min_kwh <= 50 <= fact.max_kwh:
-                self.db.store_fact_selection(f"yesterday-{fact.fact_id}", yesterday,
-                                             fact.fact_id, fact.family, 50)
+        for fact in ENERGY.values():
+            if fact["min_kwh"] <= 50 <= (fact["max_kwh"] or float("inf")):
+                self.db.store_fact_selection(f"yesterday-{fact['id']}", yesterday,
+                                             fact["id"], fact["family"], 50)
         selected_from_exhausted_pool = build_story(self.db, now, 50, 1)
         self.assertNotEqual(selected_from_exhausted_pool.fact_id, "TECH")
 
@@ -319,12 +318,12 @@ class DashboardTest(unittest.TestCase):
         now = datetime(2026, 7, 25, 11, 5, tzinfo=timezone.utc)
         current_hour = now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
         previous_hour = (current_hour.astimezone(timezone.utc) - timedelta(hours=1)).astimezone(ZURICH)
-        previous_fact = FACTS[0]
+        previous_fact = ENERGY["phone_charge"]
         self.db.store_fact_selection(hour_key(previous_hour), previous_hour,
-                                     previous_fact.fact_id, previous_fact.family, 5)
+                                     previous_fact["id"], previous_fact["family"], 5)
 
         bridged = build_story(self.db, now, 8, 1)
-        self.assertEqual(bridged.fact_id, previous_fact.fact_id)
+        self.assertEqual(bridged.fact_id, previous_fact["id"])
         self.assertEqual(bridged.selection_source, "previous_hour_bridge")
         self.assertIsNone(self.db.get_fact_selection(hour_key(current_hour)))
 
@@ -342,9 +341,9 @@ class DashboardTest(unittest.TestCase):
                                                                microsecond=0)
                 previous_hour = (current_hour.astimezone(timezone.utc) -
                                  timedelta(hours=1)).astimezone(ZURICH)
-                fact = FACTS[0]
+                fact = ENERGY["phone_charge"]
                 self.db.store_fact_selection(hour_key(previous_hour), previous_hour,
-                                             fact.fact_id, fact.family, 5)
+                                             fact["id"], fact["family"], 5)
                 sun = None
                 if now.month == 10:
                     sun = type("Sun", (), {
@@ -359,10 +358,9 @@ class DashboardTest(unittest.TestCase):
                 else:
                     self.assertEqual(previous_hour.hour, current_hour.hour)
                     self.assertNotEqual(previous_hour.fold, current_hour.fold)
-                    self.assertEqual(story.selection_source,
-                                     "previous_hour_bridge")
+                    self.assertEqual(story.fact_id, "DST_END")
 
-    def test_previous_hour_bridge_reuses_historical_yesterday_until_anchor(self):
+    def test_previous_hour_yesterday_row_survives_active_phase_cutover(self):
         now = datetime(2026, 7, 25, 11, 5, tzinfo=timezone.utc)
         current_hour = now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
         previous_hour = (current_hour.astimezone(timezone.utc) -
@@ -379,19 +377,10 @@ class DashboardTest(unittest.TestCase):
             42, context_json=payload)
 
         bridged = build_story(self.db, now, 50, 1)
-        self.assertEqual(bridged.fact_id, "HIST_YESTERDAY")
-        self.assertEqual(bridged.selection_energy_kwh, 42)
-        self.assertEqual(bridged.selection_source, "previous_hour_bridge")
-        self.assertTrue(bridged.selection_persisted)
-        self.assertIsNone(self.db.get_fact_selection(hour_key(current_hour)))
+        self.assertIn(bridged.fact_id, ENERGY)
+        self.assertEqual(self.db.get_fact_selection(hour_key(previous_hour)).fact_id, "HIST_YESTERDAY")
 
-        self.aggregate(now.replace(minute=0), 1, 1, 0, 0, 0, 1, energy=50)
-        selected = build_story(self.db, now, 50, 1)
-        self.assertEqual(selected.selection_source, "new")
-        self.assertNotIn(selected.fact_id, {"HIST_YESTERDAY", "TECH"})
-        self.assertIsNotNone(self.db.get_fact_selection(hour_key(current_hour)))
-
-    def test_previous_hour_bridge_rerenders_historical_record_with_current_yield(self):
+    def test_previous_hour_unqualified_record_yields_to_current_energy(self):
         now = datetime(2026, 7, 25, 11, 5, tzinfo=timezone.utc)
         current_hour = now.astimezone(ZURICH).replace(minute=0, second=0, microsecond=0)
         previous_hour = (current_hour.astimezone(timezone.utc) -
@@ -406,12 +395,9 @@ class DashboardTest(unittest.TestCase):
 
         first = build_story(self.db, now, 50, 1)
         updated = build_story(self.db, now + timedelta(minutes=1), 55, 1)
-        self.assertEqual(first.selection_source, "previous_hour_bridge")
-        self.assertEqual(updated.selection_source, "previous_hour_bridge")
-        self.assertIn("50", first.line_1)
-        self.assertIn("55", updated.line_1)
-        self.assertNotEqual(first.line_1, updated.line_1)
-        self.assertIsNone(self.db.get_fact_selection(hour_key(current_hour)))
+        self.assertIn(first.fact_id, ENERGY)
+        self.assertEqual(first.fact_id, updated.fact_id)
+        self.assertNotEqual((first.line_1,first.line_2), (updated.line_1,updated.line_2))
 
     def test_previous_hour_bridge_ignores_invalid_historical_context(self):
         now = datetime(2026, 7, 25, 11, 5, tzinfo=timezone.utc)
@@ -427,19 +413,17 @@ class DashboardTest(unittest.TestCase):
                 story = build_story(self.db, now, 50, 1)
                 self.assertNotEqual(story.selection_source,
                                     "previous_hour_bridge")
-                self.assertIsNone(self.db.get_fact_selection(hour_key(current_hour)))
+                self.assertIsNotNone(self.db.get_fact_selection(hour_key(current_hour)))
 
-    def test_story_waits_before_first_fact_eligible_morning_bucket(self):
+    def test_small_morning_bucket_is_eligible_for_v2(self):
         now = datetime(2026, 7, 25, 4, 25, tzinfo=timezone.utc)
         self.snapshot(now, energy_today=.8)
         self.aggregate(now.replace(minute=0), 0, 1, 0, 0, -1, 1, energy=0)
         self.aggregate(now.replace(minute=20), .2, 1, 0, 0, -.8, 1, energy=.2)
         view = build_live_view(self.db, now)
-        self.assertEqual(view["story_status"]["fact_id"], "TECH")
-        self.assertIsNone(view["story_status"]["selection_energy_kwh"])
-        self.assertEqual(view["story_status"]["selection_source"], "none")
-        self.assertEqual(self.db.connection.execute(
-            "SELECT COUNT(*) FROM fact_history").fetchone()[0], 0)
+        self.assertIn(view["story_status"]["fact_id"], ENERGY)
+        self.assertEqual(view["story_status"]["selection_energy_kwh"], .2)
+        self.assertTrue(view["story_status"]["selection_persisted"])
 
     def test_total_counter_repairs_fact_anchor_when_day_energy_is_zero(self):
         now = datetime(2026, 7, 25, 8, 12, tzinfo=timezone.utc)

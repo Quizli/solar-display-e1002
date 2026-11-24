@@ -19,7 +19,7 @@
   });
   const BATTERY_DIRECTIONS = ["charging", "discharging", "idle", "unavailable"];
   const GRID_DIRECTIONS = ["exporting", "importing", "idle", "unavailable"];
-  const COMPARISON_DIRECTIONS = ["higher", "lower", "similar"];
+  const COMPARISON_DIRECTIONS = ["higher", "lower", "similar", "neutral"];
 
   const batteryLabels = Object.freeze({ charging: "Batterie lädt", discharging: "Batterie liefert", idle: "Batterie inaktiv", unavailable: "Batterie nicht verfügbar" });
   const gridLabels = Object.freeze({ exporting: "Einspeisung", importing: "Netzbezug", idle: "Kein Netzfluss", unavailable: "Netz nicht verfügbar" });
@@ -111,7 +111,7 @@
       "live.battery_flow.magnitude_kw": formatNumber(payload.live.battery_flow.magnitude_kw, "decimal"), "live.grid_flow.direction": gridLabels[gridDirection],
       "live.grid_flow.magnitude_kw": formatNumber(payload.live.grid_flow.magnitude_kw, "decimal"), "today.yield_kwh": formatNumber(payload.today.yield_kwh, "decimal"),
       "today.self_consumption_percent": formatNumber(payload.today.self_consumption_percent, "integer"), "today.co2_avoided_kg": formatNumber(payload.today.co2_avoided_kg, "decimal"),
-      "insight.line_1": payload.insight.line_1 || DASH, "insight.line_2": payload.insight.line_2 || DASH, "historical_comparison.statement": comparison ? comparison.statement : EMPTY_COMPARISON
+      "insight.line_1": [payload.insight.line_1, payload.insight.line_2].filter(Boolean).join(" ") || DASH, "insight.line_2": "", "historical_comparison.statement": comparison ? comparison.statement : EMPTY_COMPARISON
     };
     const states = {};
     Object.entries(componentMap).forEach(([source, targets]) => { const componentState = payload.status.affected_components.includes(source) ? "degraded" : (["available", "cached"].includes(payload.status.components[source]) ? "fresh" : payload.status.components[source]); targets.forEach(target => { states[target] = componentState; }); });

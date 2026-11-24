@@ -87,6 +87,7 @@ def bucket_start(value: datetime) -> datetime:
 
 class SolarDatabase:
     def __init__(self, path: str, read_only: bool = False) -> None:
+        self.read_only = read_only
         self.path = path
         if read_only and path == ":memory:":
             raise ValueError("an in-memory database cannot be opened read-only")
@@ -159,6 +160,16 @@ class SolarDatabase:
                     created_at_utc TEXT NOT NULL,
                     context_json TEXT
                 );
+                CREATE INDEX IF NOT EXISTS fact_history_day ON fact_history(local_day);
+                CREATE INDEX IF NOT EXISTS fact_history_recent ON fact_history(fact_id, created_at_utc DESC, local_hour DESC, dst_fold DESC);
+                CREATE INDEX IF NOT EXISTS fact_history_instant ON fact_history(julianday(local_hour));
+                CREATE TABLE IF NOT EXISTS milestone_events (
+                    event_key TEXT PRIMARY KEY, local_day TEXT NOT NULL,
+                    triggered_utc TEXT NOT NULL, fact_id TEXT NOT NULL,
+                    branch TEXT NOT NULL, values_json TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS milestone_day ON milestone_events(local_day);
+                CREATE TABLE IF NOT EXISTS insight_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 """
             )
             columns = {
@@ -187,6 +198,16 @@ class SolarDatabase:
             "SELECT * FROM fact_history WHERE hour_key = ?", (hour_key,)
         ).fetchone()
         return self._fact_selection(row)
+
+    def latest_slot_revision(self, slot):
+        """Read the original selection and its replacements using primary-key ranges."""
+        prefix = slot + ":v2:"
+        record = self.connection.execute(
+            "SELECT * FROM fact_history WHERE hour_key=? OR (hour_key>=? AND hour_key<?) "
+            "ORDER BY created_at_utc DESC, rowid DESC LIMIT 1",
+            (slot, prefix, slot + ":v2;")
+        ).fetchone()
+        return self._fact_selection(record)
 
     def store_fact_selection(self, hour_key: str, local_hour: datetime,
                              fact_id: str, family: str,
@@ -225,24 +246,25 @@ class SolarDatabase:
         if local_hour.tzinfo is None or local_hour.utcoffset() is None:
             raise ValueError("local_hour must be timezone-aware")
         target = local_hour.astimezone(UTC)
-        rows = self.connection.execute("SELECT * FROM fact_history").fetchall()
-        earlier = [row for row in rows
-                   if datetime.fromisoformat(row["local_hour"]).astimezone(UTC) < target]
-        if not earlier:
-            return None
-        row = max(earlier, key=lambda item:
-                  datetime.fromisoformat(item["local_hour"]).astimezone(UTC))
+        row = self.connection.execute(
+            "SELECT * FROM fact_history WHERE julianday(local_hour) < julianday(?) "
+            "ORDER BY julianday(local_hour) DESC LIMIT 1", (target.isoformat(),)
+        ).fetchone()
         return self._fact_selection(row)
 
     def recent_catalog_fact_selections(self, fact_ids, limit: int = 12):
         """Return latest actually persisted catalogue selections, newest first."""
         if limit <= 0 or not fact_ids:
             return []
-        placeholders = ",".join("?" for _ in fact_ids)
+        # Limit each indexed ID range before merging. An absent/retired ID
+        # must not require walking the entire audit log at every refresh.
+        per_id = ("SELECT * FROM (SELECT * FROM fact_history WHERE fact_id=? "
+                  "ORDER BY created_at_utc DESC, local_hour DESC, dst_fold DESC LIMIT ?)")
+        union = " UNION ALL ".join(per_id for _ in fact_ids)
+        args = [arg for ident in fact_ids for arg in (ident, limit)]
         rows = self.connection.execute(
-            f"""SELECT * FROM fact_history WHERE fact_id IN ({placeholders})
-                ORDER BY created_at_utc DESC, local_hour DESC, dst_fold DESC LIMIT ?""",
-            (*fact_ids, limit),
+            f"SELECT * FROM ({union}) ORDER BY created_at_utc DESC, local_hour DESC, dst_fold DESC LIMIT ?",
+            (*args, limit)
         ).fetchall()
         return [self._fact_selection(row) for row in rows]
 

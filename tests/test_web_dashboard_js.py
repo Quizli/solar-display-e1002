@@ -57,6 +57,17 @@ def run_js(source):
 
 
 class WebDashboardJavaScriptTests(unittest.TestCase):
+    def test_one_line_and_neutral_comparison(self):
+        payload = deepcopy(PAYLOAD)
+        payload["insight"].update(line_1="Ein Satz.",line_2="")
+        payload["historical_comparison"].update(direction="neutral",baseline_kwh=None,
+                                               comparison_value_kwh=None,difference_percent=None)
+        result = run_js(JS_BOOT + f"const p={json.dumps(payload)};" +
+                        "console.log(JSON.stringify([api.validPayload(p),api.buildViewModel(p).fields]));")
+        self.assertTrue(result[0])
+        self.assertEqual(result[1]["insight.line_1"],"Ein Satz.")
+        self.assertEqual(result[1]["insight.line_2"],"")
+
     @classmethod
     def setUpClass(cls):
         payload = json.dumps(PAYLOAD, ensure_ascii=False)
