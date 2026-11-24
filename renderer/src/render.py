@@ -6,6 +6,12 @@ import re
 import sys
 from xml.sax.saxutils import escape
 
+# scripts/render.sh also runs this file directly from a source checkout.
+if __name__ == "__main__" and not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from dashboard.facts.width import both_lines_fit, text_width_px
+
 BLACK = "#000000"
 WHITE = "#FFFFFF"
 YELLOW = "#FFD400"
@@ -16,6 +22,68 @@ BLUE = "#0057B8"
 SOLAR_PROGRESS_MAX_KW = 18.0
 SEGMENT_COUNT = 20
 MISSING = "—"
+
+
+# All badge artwork is renderer-owned, in a local 48 px square.
+_BADGES = {
+    "record": (YELLOW, f'<g fill="{BLACK}">'
+               '<path d="M13 9h22v7c0 8-3 12-8 14v5h7v4H14v-4h7v-5c-5-2-8-6-8-14z"/>'
+               '<path d="M14 13H7v4c0 6 4 10 11 10m16-14h7v4c0 6-4 10-11 10" '
+               f'fill="none" stroke="{BLACK}" stroke-width="4" stroke-linejoin="round"/></g>'),
+    "milestone": (GREEN, f'<polygon fill="{WHITE}" points="24,6 29,18 42,19 32,28 '
+                         '35,41 24,34 13,41 16,28 6,19 19,18"/>'),
+    "calendar": (BLUE, f'<rect x="7" y="12" width="34" height="29" rx="3" fill="{WHITE}"/>'
+                       f'<path d="M14 7h5v9h-5z M29 7h5v9h-5z" fill="{WHITE}"/>'
+                       f'<rect x="12" y="22" width="24" height="14" fill="{BLUE}"/>'),
+    "warning": (RED, f'<rect x="20" y="7" width="8" height="22" rx="3" fill="{WHITE}"/>'
+                     f'<circle cx="24" cy="37" r="4" fill="{WHITE}"/>'),
+}
+
+
+def badge_category(fact_id, family):
+    if fact_id in ("STALE", "MISSING"):
+        return "warning"
+    if fact_id in ("DAILY_RECORD", "STREAK_RECORD", "RECORD_AFTERGLOW"):
+        return "record"
+    if fact_id and family in ("milestone", "calendar"):
+        return family
+    return None
+
+
+def story_layout(data):
+    line1, line2 = data.get("story_line_1", ""), data.get("story_line_2", "")
+    category = badge_category(data.get("story_fact_id"), data.get("story_family"))
+    if category:
+        # Status stories have two independent fields: a timestamp and an instruction.
+        if category == "warning" and line1 and line2 and both_lines_fit((line1, line2), 455):
+            return line1, line2, 15, 354, category
+        text = " ".join(f"{line1} {line2}".split())
+        # Keep measured quantities together but allow a break after a standalone number.
+        protected = {match.start() for match in re.finditer(
+            r"(?<=\d) (?=(?:kWh|MWh|Wh|kW|W|kg|km|Uhr|Stunden?|Minuten?|Tage[n]?|Jahre[n]?|%)(?!\w))",
+            text)}
+        splits = [(text[:i], text[i + 1:]) for i, char in enumerate(text)
+                  if char == " " and i not in protected]
+        widths = [(text_width_px(a), text_width_px(b), a, b) for a, b in splits]
+        full_width = text_width_px(text)
+        for size in (15, 14, 13):
+            limit = 455 * 15 / size  # the shared font metrics are measured at 15 px
+            if text and full_width <= limit:
+                return text, "", size, 365, category
+            fits = [(abs(left - right), a, b) for left, right, a, b in widths
+                    if max(left, right) <= limit]
+            if fits:
+                _, first, second = min(fits)
+                return first, second, size, 354, category
+    return line1, line2, 15, 354, None
+
+
+def story_badge_svg(category):
+    if category is None:
+        return ""
+    background, icon = _BADGES[category]
+    return (f'<g data-story-badge="{category}" transform="translate(727 336)">'
+            f'<rect width="48" height="48" rx="4" fill="{background}"/>{icon}</g>')
 
 
 def weather_icon_svg(variant):
@@ -148,6 +216,7 @@ def render_dashboard(data, template=None):
     solar_segments = segment_count(solar_power or 0, SOLAR_PROGRESS_MAX_KW)
     battery_segments = segment_count(battery_percent or 0, 100) if battery_available else 0
     pct = _number(data, "self_consumption_percent")
+    line1, line2, font_size, first_y, badge = story_layout(data)
     values = {
         "SOLAR_POWER": format_1(max(0, solar_power)) if solar_power is not None else MISSING,
         "CURRENT_TIME": data.get("current_time", MISSING), "DATE_TEXT": data.get("date_text", MISSING),
@@ -158,7 +227,8 @@ def render_dashboard(data, template=None):
         "BATTERY_FLOW_LABEL": battery_label, "BATTERY_FLOW_POWER": MISSING if battery_flow == MISSING else battery_flow + " kW",
         "GRID_LABEL": grid_label, "GRID_POWER": MISSING if grid_display == MISSING else grid_display + " kW",
         "SUNRISE": data.get("sunrise") or MISSING, "SUNSET": data.get("sunset") or MISSING,
-        "STORY_LINE_1": data.get("story_line_1", ""), "STORY_LINE_2": data.get("story_line_2", ""),
+        "STORY_LINE_1": line1, "STORY_LINE_2": line2,
+        "STORY_FONT_SIZE": font_size, "STORY_FIRST_Y": first_y,
         "DAY_YIELD": format_day_yield(data.get("day_yield_kwh")),
         "SELF_CONSUMPTION": str(round_half_up(clamp(pct, 0, 100))) if pct is not None else MISSING,
         "SELF_CONSUMPTION_UNIT": "%" if pct is not None else "",
@@ -180,7 +250,7 @@ def render_dashboard(data, template=None):
         values[f"SOLAR_SEG_{i:02d}_FILL"] = YELLOW if i <= solar_segments else WHITE
         values[f"BATTERY_SEG_{i:02d}_FILL"] = GREEN if i <= battery_segments else WHITE
     rendered = template
-    for key, value in {"CHART_SERIES_SVG": chart_svg,
+    for key, value in {"CHART_SERIES_SVG": chart_svg, "STORY_BADGE_SVG": story_badge_svg(badge),
                        "WEATHER_ICON_SVG": weather_icon_svg(data.get("weather_icon_variant")),
                        "HOUSE_ARROW_SVG": house_arrow_svg, "HEAT_ARROW_SVG": heat_arrow_svg,
                        "BATTERY_ARROW_SVG": battery_arrow_svg, "GRID_ARROW_SVG": grid_arrow_svg}.items():
